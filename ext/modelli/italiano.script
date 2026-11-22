@@ -1,0 +1,38 @@
+# Modello di progetto italiano: lo script che lo crea.
+#
+#   bimcraft-cli run --script ext/modelli/italiano.script --save ext/modelli/italiano.bimt
+#
+# Lingua e unità: i disegni parlano italiano, le lunghezze in metri con due decimali (il modello resta in mm).
+new {"language": "it"}
+units {"length": "m", "decimals": 2}
+
+# Piani: il progetto nuovo ha Piano 1 (0) e Piano 2 (3000), rinominati; poi l'interrato e il sottotetto.
+@piani = elements {"category": "levels"}
+modify {"id": "@piani.elements.0.id", "name": "Piano terra"}
+modify {"id": "@piani.elements.1.id", "name": "Piano primo"}
+level {"elevation": -3000, "name": "Piano interrato"}
+level {"elevation": 6000, "name": "Sottotetto"}
+
+# Fasi: lo stato di fatto e lo stato di progetto (al posto di Esistente e Nuova costruzione).
+@fasi = phase {}
+phase {"name": "@fasi.phases.0", "rename": "Stato di fatto"}
+phase {"name": "@fasi.phases.1", "rename": "Stato di progetto"}
+
+# Gialli e rossi: come la tavola comparativa disegna ciò che dice "sostituito" (overridden).
+# Demolizioni in giallo, nuove costruzioni in rosso, l'esistente conservato in mezzatinta grigia.
+phase {"overrides": {"demolished": {"cut": {"fill": [255, 210, 0], "color": [0, 0, 0], "dash": "solid"}, "projection": {"color": [200, 160, 0], "dash": "solid"}}, "new": {"cut": {"fill": [220, 30, 30], "color": [0, 0, 0]}, "projection": {"color": [200, 0, 0]}}, "existing": {"halftone": true}}}
+
+# I filtri delle fasi delle tre tavole.
+phase_filter {"name": "Stato di fatto", "new": "by-category", "existing": "by-category", "demolished": "by-category", "temporary": "not-displayed"}
+phase_filter {"name": "Comparativo", "new": "overridden", "existing": "overridden", "demolished": "overridden", "temporary": "not-displayed"}
+phase_filter {"name": "Stato di progetto", "new": "by-category", "existing": "by-category", "demolished": "not-displayed", "temporary": "not-displayed"}
+
+# Le tre piante del piano terra: la pianta del piano è lo stato di progetto; due copie per lo stato di fatto e il comparativo.
+graphics {"view": "Piano terra", "phase": "Stato di progetto", "phase_filter": "Stato di progetto"}
+duplicate_view {"view": "Piano terra", "name": "Piano terra - Stato di fatto"}
+graphics {"view": "Piano terra - Stato di fatto", "phase": "Stato di fatto", "phase_filter": "Stato di fatto"}
+duplicate_view {"view": "Piano terra", "name": "Piano terra - Comparativo"}
+graphics {"view": "Piano terra - Comparativo", "phase": "Stato di progetto", "phase_filter": "Comparativo"}
+
+# Gli elementi nuovi nascono nello stato di progetto: il rilievo si disegna scegliendo "Stato di fatto" come fase.
+phase {"now": "Stato di progetto"}
