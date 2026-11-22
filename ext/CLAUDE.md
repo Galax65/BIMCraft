@@ -19,6 +19,11 @@ l'app e provare una funzione). Le sue osservazioni su come si comporta Archicad 
   cargo test --workspace
   ```
   Durante il lavoro basta il crate toccato (`cargo test -p bimcraft-core <nome>`); il giro completo prima di ogni commit.
+- **Prima di ogni push anche `cargo i18n check`.** La CI di upstream lo fa su Linux e fallisce se i file delle traduzioni
+  (`.pot`, `.po`) non corrispondono al codice, anche solo per i numeri di riga che cambiano aggiungendo codice; i tre
+  controlli sopra non se ne accorgono (così sono fallite #588, #590 e #591 il 22/11/2026). Se fallisce: `cargo i18n update`
+  e un commit con i file rigenerati. Lo strumento scrive nella cartella in cui è stato compilato: in una copia temporanea
+  (`git worktree`) usa una `CARGO_TARGET_DIR` sua, mai una condivisa.
 - **Piano prima del codice.** Prima di toccare `crates/core` o di iniziare una specifica, scrivi un piano breve (file
   toccati, comandi nuovi, test) e aspetta il mio ok.
 - **Dove va il codice:** leggi [README.md](README.md). Contributi per upstream su `up/<funzione>` da `main`; lavori del
