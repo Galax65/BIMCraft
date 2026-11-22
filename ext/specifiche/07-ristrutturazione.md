@@ -60,3 +60,26 @@ Proposta a IPedrax: commento alla [#586](https://github.com/IPedrax/BIMCraft/dis
 
 Il [modello italiano](../modelli/README.md) spiega il procedimento con le tre piante, e il comparativo mostra in giallo
 anche gli elementi "temporanei", così un errore si vede.
+
+## Piano di lavoro (approvato da Paolo il 22/11/2026)
+
+Decisioni: si parte da **"Segue la vista"** (il comportamento di oggi; la palette cambia qualcosa solo quando si sceglie
+uno stato); con **più di due fasi** "Nuovo" è la fase della vista ed "Esistente" quella prima (con due fasi: la prima e
+l'ultima); il lavoro va su **`up/palette-ristrutturazione`** da `main`, PR solo quando Paolo lo chiede. Lo stato per
+strato resta per dopo.
+
+1. **Motore (`crates/core`).** La sessione ricorda anche la fase in cui viene demolito ciò che si crea (un campo accanto
+   a `Session::phase`, applicato da `Session::stamp` in `engine.rs`; Co-Work lo porta in `cowork.rs` come `phase` e
+   `option`). Comando nuovo `renovation`: `{status}` fissa lo stato con cui si disegna (`existing`, `demolish`, `new`,
+   o null per seguire la vista), `{status, ids}` lo dà a quegli elementi in un passo di annullamento (porte e finestre
+   con una fase propria), senza parametri dice lo stato attuale e quello degli elementi; rifiutato con un messaggio
+   chiaro in un progetto di una fase sola. Test prima: muro disegnato "Da demolire" con le due fasi; Nuovo dato a muro,
+   porta e finestra e annullato in un passo; rifiuto con una fase sola; payload nel giro dei parametri ostili
+   (`hostile_params_never_panic_or_break_the_model`). Un paragrafo in `docs/areas/phasing.md`.
+2. **App (`crates/ui-egui`).** `Palette::Renovation` in `dock.rs`, il contenuto in `phasing.rs` dell'app: tre pulsanti
+   per lo stato con cui si disegna (più "Segue la vista"), tre per assegnarlo alla selezione con lo stato della
+   selezione (o "misto"), il menu Ristrutturazione della vista. `BimApp::made_in` usa lo stato della palette quando c'è.
+   Test egui_kittest: Da demolire e un muro disegnato; selezione e Nuovo; il filtro della vista. Parole in `it.po`,
+   `cargo i18n update`.
+3. **Guardare il risultato:** screenshot della palette e le tre piante (stato di fatto, comparativo, progetto) esportate.
+4. **Paolo prova nell'app** con il modello italiano il caso del demolito del 22/11.
