@@ -41,11 +41,25 @@ poi tra muri e solai. È la fase più delicata (geometria del core): si apre pri
   stile di vista, non come regola fissa nel codice.
 - Classificazione UNI 11337 come tabella caricabile (il Classification Manager esiste già; nessuna tabella distribuita).
 - Riferimenti normativi (DPR 380/2001, D.Lgs. 36/2023, CAM) come dati in `data/codes/` con la fonte, mai nel codice.
+- **Requisiti dei locali a più livelli** (decisione di Paolo, 22/11/2026): i **nazionali** (DM 5/7/1975: altezze, superfici
+  minime, rapporto aeroilluminante 1/8) come normativa di base, e sopra i **regionali** (per esempio le leggi e i
+  regolamenti del Friuli Venezia Giulia) e, se servono, i **comunali** (regolamenti edilizi) come *integrazioni*, il
+  meccanismo che BIMCraft ha già (`codes.rs`: una normativa più le integrazioni applicate sopra, nell'ordine scelto, la più
+  in basso che vince). La verifica "Locali e abitabilità" esiste già e legge i tipi di locale dal nome: servono i dati,
+  ognuno con la sua fonte, non codice nuovo.
 - Unità e convenzioni grafiche italiane (quote, retini, penne) come standard tecnico selezionabile (`standards.rs`).
 
-## Fase 6 — Quantità
+## Fase 6 — Quantità e prezzari
 
 Aree nette dei muri (tolte le aperture), quantità per strato e per materiale, quantità per fase.
+
+**Prezzari** (decisione di Paolo, 22/11/2026): non un prezzario solo, ma **qualunque prezzario si voglia caricare**:
+regionali (FVG, Veneto, Lombardia…), DEI, listini aziendali o di studio. Un formato interno unico (codice, descrizione,
+unità di misura, prezzo, eventuali voci di analisi) e lettori per i formati in cui i prezzari si pubblicano (Excel/CSV,
+XML, le esportazioni dei programmi di computo), più il collegamento delle voci alle quantità del modello per il computo.
+Il prezzario lo carica l'utente: nel repository nessun prezzario distribuito, salvo quelli pubblicati con una licenza che
+lo permette (da verificare caso per caso). Vive nel fork (`ext/crates/`), perché è italiano; il collegamento alle
+quantità, se generale, si propone a IPedrax.
 
 ## Fase 7 — Ponte con Quadra (per ultimo)
 
