@@ -2,6 +2,11 @@
 
 Base comune delle specifiche 01–04. Da proporre a IPedrax come issue prima di scrivere codice.
 
+> **Cambio di rotta (22/11/2026, decisione di Paolo):** niente terzo profilo `Arc`. Le stesse cose (barra delle
+> impostazioni in alto, comandi di modifica in una barra orizzontale in alto, Cmd-T, Navigatore diviso per scopo) si
+> propongono come **modifiche al profilo BIMCraft**, che ha già la palette strumenti, l'Ispettore e il Navigatore.
+> Il resto di questa specifica vale ancora, letto come "profilo BIMCraft" dove dice "profilo Arc".
+
 ## Cosa c'è già
 
 `crates/ui-egui/src/style.rs` ha `enum Profile { BimCraft, Rev }`: due profili che **differiscono solo nell'aspetto**

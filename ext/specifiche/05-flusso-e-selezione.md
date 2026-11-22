@@ -55,6 +55,18 @@ Solo comportamento, mai testi, icone o contenuti Graphisoft.
 - **Selezione multipla nell'Info Box**: i campi con valori diversi sono "misti"; un valore scritto vale per tutti gli
   elementi modificabili.
 
+## Note di Paolo dopo le prime prove (22/11/2026)
+
+1. **Selezionare con Shift dentro un comando attivo**: con uno strumento di disegno in mano, Shift tenuto seleziona
+   senza lasciarlo (vedi la tabella sopra). Va nello schema di selezione.
+2. **Clic sull'ultimo punto della catena**: un clic sull'ultimo punto già messo termina la catena (muri, linee,
+   polilinee), come un doppio clic. Oggi la catena finisce con Invio, Esc o un doppio clic; cliccare di nuovo il
+   primo punto la chiude. **(da verificare con Paolo: "termina", non "annulla")**
+3. **Comandi di modifica in una barra orizzontale in alto**: sposta, ruota, specchia, offset, taglia… in fila
+   orizzontale in alto, accanto o sopra la barra delle impostazioni, invece che nella colonna della palette.
+4. **Niente terzo profilo**: queste cose si propongono come modifiche al profilo BIMCraft (vedi [00](00-profilo-archicad.md)).
+5. **File di Archicad**: vedi [06](06-da-archicad.md).
+
 ## Cosa cambia per upstream
 
 Upstream vuole profili che differiscano **solo nell'aspetto**, con le stesse scorciatoie (`docs/areas/desktop.md`).
