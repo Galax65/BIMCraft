@@ -37,10 +37,32 @@ Un terzo profilo, `Profile::Arc` (nome di lavoro), con:
 2. Codice: il nuovo valore dell'enum, il suo nome, il layout di partenza (`Docking`), e la voce nelle impostazioni.
 3. Verifica di Paolo: scegliere il profilo nelle impostazioni, riavviare, vedere la disposizione.
 
-## Testo della issue per IPedrax (bozza, in inglese)
+## Cosa è già stato detto upstream (PR #194, novembre 2026)
+
+- L'Info Box in alto l'ha già proposto Paolo il 02/11/2026, con uno screenshot di Archicad e i gruppi da sinistra a
+  destra (Principale, Lucido, Metodo geometria, Linea di riferimento, Struttura, Pianta e sezione, Piani collegati,
+  offset e spessore). La #194 è stata chiusa senza unirla; le sue idee sono nel profilo BIMCraft (1a605a6d).
+- **Obiezione di dansity:** un elemento può avere fino a 100 parametri (COBie, classificazioni), che una barra non
+  contiene. **Risposta:** come in Archicad, l'Info Box mostra solo i parametri principali dello strumento; tutti gli
+  altri stanno nelle Impostazioni strumento (Cmd-T) e nelle Proprietà, che restano. L'Info Box non sostituisce le
+  Proprietà, le affianca.
+- **Dove proporlo:** i manutentori hanno chiesto di discutere i layout dell'interfaccia nelle
+  [Discussions](https://github.com/IPedrax/BIMCraft/discussions), non nelle PR. La proposta del profilo Arc si apre lì;
+  il codice arriva dopo, una PR per passo.
+
+## Testo della proposta per IPedrax (bozza, in inglese, da pubblicare nelle Discussions)
 
 > **An Archicad-like interface profile.** Following #190 and #194: a third `Profile` beside BIMCraft and Rev, looks only,
-> same commands. It would host the Tools palette with an Info Box, tool default settings, a Navigator (project map, view
-> map, layout book, publisher sets) in place of the Project Browser. Where it needs behaviour the core lacks (layers and
-> layer combinations, building-material priorities) we would propose it as separate core PRs usable by every profile.
+> same commands. It would host the Tools palette with an Info Box along the top, tool default settings (Cmd+T), and a
+> Navigator (project map, view map, layout book, publisher sets) in place of the Project Browser.
+>
+> On dansity's point in #194 about elements with a hundred parameters: the Info Box would show only the main settings
+> of the tool in hand or of the selection (as Archicad's does); every other parameter stays in Properties and in the
+> tool settings dialog, so nothing is lost and Properties is unchanged.
+>
+> Archicad's selection (Shift+click to add and remove, Shift held with a tool to select without leaving it) changes
+> what the mouse does, not only looks, so it would be a separate, opt-in selection scheme in Settings rather than part
+> of the profile. Where the profile needs behaviour the core lacks (layers and layer combinations, building-material
+> priorities) we would propose it as separate core PRs usable by every profile.
+>
 > Would you accept it in this shape? I can test every PR on macOS.
