@@ -42,12 +42,19 @@ serve anche quella di demolizione: o un secondo campo della sessione, o un coman
 imposta le due fasi (con `ids` le assegna, senza le sceglie per ciò che si crea). Da proporre a IPedrax prima del codice:
 le fasi sono un suo progetto.
 
-## Da confermare con Paolo (comportamento di Archicad)
+## Comportamento confermato da Paolo (22/11/2026)
 
-- Un elemento Da demolire: nello stato di fatto normale, nel comparativo giallo, nel progetto assente.
-- Un elemento Nuovo: nello stato di fatto assente, nel comparativo rosso, nel progetto normale.
-- Porte e finestre: prendono lo stato del muro o il proprio? (In BIMCraft oggi seguono il muro se non hanno una fase.)
-- Si può dare uno stato a un elemento di un gruppo, o a parti di un muro?
+- Un elemento **Da demolire**: normale nello stato di fatto, giallo nel comparativo, assente nel progetto.
+- Un elemento **Nuovo**: assente nello stato di fatto, rosso nel comparativo, normale nel progetto.
+- **Porte e finestre hanno uno stato proprio**, indipendente dal muro: una finestra nuova in un muro esistente, una porta
+  da demolire in un muro che resta. In BIMCraft una porta o finestra senza fase segue il muro; la palette le dà sempre
+  la sua.
+- **Lo stato per strato** (uno strato di un muro composto da demolire, uno nuovo, come un intonaco rifatto o un
+  cappotto aggiunto): in Archicad non si può, ed è una delle richieste più frequenti degli utenti. In BIMCraft gli strati
+  sono già parti con il loro id e GUID (`HasPart`, `library.rs`), quindi potrebbero portare uno stato: proposta per dopo,
+  da segnalare a IPedrax come punto in cui BIMCraft può fare meglio.
+
+Proposta a IPedrax: commento alla [#586](https://github.com/IPedrax/BIMCraft/discussions/586), il 22/11/2026.
 
 ## Nel frattempo
 
