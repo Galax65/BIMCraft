@@ -66,6 +66,12 @@ Solo comportamento, mai testi, icone o contenuti Graphisoft.
    orizzontale in alto, accanto o sopra la barra delle impostazioni, invece che nella colonna della palette.
 4. **Niente terzo profilo**: queste cose si propongono come modifiche al profilo BIMCraft (vedi [00](00-profilo-archicad.md)).
 5. **File di Archicad**: vedi [06](06-da-archicad.md).
+6. **Preleva e trasferisci parametri** (contagocce e siringa di Archicad: Alt-clic preleva, Cmd-Alt-clic trasferisce).
+   BIMCraft ha *Match Properties* (MA, `match_properties`), che copia solo il **tipo** sugli elementi selezionati, in due
+   passi (sorgente + MA, poi bersagli + MA). Serve: prelevare **tutte** le impostazioni di un elemento (tipo, altezze,
+   offset, linea di riferimento, lucido, stato di ristrutturazione, materiali) come impostazioni dello strumento per il
+   prossimo elemento, e trasferirle con un clic su ogni elemento, uno dopo l'altro. Va proposto insieme a Cmd+T: il
+   prelievo riempie proprio le impostazioni dello strumento. Annotato il 22/11/2026.
 
 ## Cosa cambia per upstream
 
