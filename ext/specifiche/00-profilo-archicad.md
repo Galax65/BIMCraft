@@ -50,7 +50,21 @@ Un terzo profilo, `Profile::Arc` (nome di lavoro), con:
   [Discussions](https://github.com/IPedrax/BIMCraft/discussions), non nelle PR. La proposta del profilo Arc si apre lì;
   il codice arriva dopo, una PR per passo.
 
-## Testo della proposta per IPedrax (bozza, in inglese, da pubblicare nelle Discussions)
+## Regola dei nomi (da IDEAS.md di upstream)
+
+Archicad si cita solo come fonte dell'idea ("visto in"); in BIMCraft una funzione si chiama per ciò che fa, mai con
+un nome di Graphisoft: niente "Info Box", "Pet Palette", "Bacchetta magica", "Mappa progetto", né un profilo chiamato
+"Archicad". Vale per il codice, per i testi inglesi e per le proposte; le parole italiane dell'interfaccia restano
+termini tecnici comuni (glossario). "Arc" è solo il nome di lavoro di queste specifiche.
+
+## Proposta pubblicata
+
+[Discussione #586](https://github.com/IPedrax/BIMCraft/discussions/586), il 22/11/2026, nella categoria Ideas: seguito
+della #219 (chiusa da IPedrax con "Built"), il terzo profilo con la barra delle impostazioni in alto, Cmd+T e il
+Navigatore diviso per scopo; selezione, lucidi (collegati alla #427 di IPedrax) e priorità dei materiali come proposte
+separate. Si aspetta la risposta di IPedrax prima di scrivere codice.
+
+## Prima bozza della proposta (superata dalla #586)
 
 > **An Archicad-like interface profile.** Following #190 and #194: a third `Profile` beside BIMCraft and Rev, looks only,
 > same commands. It would host the Tools palette with an Info Box along the top, tool default settings (Cmd+T), and a
