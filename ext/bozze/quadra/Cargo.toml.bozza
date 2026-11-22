@@ -1,0 +1,16 @@
+[package]
+name = "bimcraft-quadra"
+description = "Connettore BIMCraft → Quadra: esporta il modello in un contratto dati versionato per il computo metrico"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+bimcraft-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
