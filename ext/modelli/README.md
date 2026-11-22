@@ -11,9 +11,14 @@ Cosa contiene:
 - **Lingua del progetto italiana**: i disegni dicono SU sulle scale e SCALA nei cartigli, gli abachi e le viste nuove nascono con nomi italiani.
 - **Unità**: metri con due decimali (il modello resta in millimetri; si cambia in Gestisci > Unità di progetto).
 - **Piani**: Piano interrato (−3,00), Piano terra (0,00), Piano primo (+3,00), Sottotetto (+6,00).
-- **Fasi**: Stato di fatto e Stato di progetto. Gli elementi nuovi nascono nello stato di progetto; per il rilievo si
-  sceglie la fase Stato di fatto (Gestisci > Fasi, o la barra di controllo della vista). Un elemento esistente da
-  demolire prende *Fase di demolizione: Stato di progetto* (strumento Demolisci).
+- **Fasi**: Stato di fatto e Stato di progetto. In BIMCraft, come in Revit, un elemento **nasce nella fase della vista in
+  cui lo disegni** e **Demolisci lo demolisce nella fase della vista in cui clicchi**. Quindi:
+  1. il **rilievo** si disegna nella pianta *Piano terra - Stato di fatto*;
+  2. **Demolisci** si usa nella pianta *Piano terra* (progetto) o nel *Comparativo*, mai nello stato di fatto;
+  3. il **nuovo** si disegna nella pianta *Piano terra*.
+  Un elemento che nasce e si demolisce nella stessa fase è "temporaneo": il comparativo lo mostra in giallo, così l'errore
+  si vede; Cmd+Z lo riporta com'era. Per lavorare come in Archicad (uno stato Esistente / Da demolire / Nuovo scelto in
+  una palette, qualunque sia la vista) vedi la specifica [07](../specifiche/07-ristrutturazione.md).
 - **Gialli e rossi**: nella tavola comparativa le demolizioni sono gialle, le nuove costruzioni rosse, l'esistente
   conservato in mezzatinta grigia.
 - **Tre piante del piano terra**: *Piano terra* (stato di progetto), *Piano terra - Stato di fatto* e

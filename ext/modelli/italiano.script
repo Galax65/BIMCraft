@@ -20,11 +20,12 @@ phase {"name": "@fasi.phases.1", "rename": "Stato di progetto"}
 
 # Gialli e rossi: come la tavola comparativa disegna ciò che dice "sostituito" (overridden).
 # Demolizioni in giallo, nuove costruzioni in rosso, l'esistente conservato in mezzatinta grigia.
-phase {"overrides": {"demolished": {"cut": {"fill": [255, 210, 0], "color": [0, 0, 0], "dash": "solid"}, "projection": {"color": [200, 160, 0], "dash": "solid"}}, "new": {"cut": {"fill": [220, 30, 30], "color": [0, 0, 0]}, "projection": {"color": [200, 0, 0]}}, "existing": {"halftone": true}}}
+phase {"overrides": {"demolished": {"cut": {"fill": [255, 210, 0], "color": [0, 0, 0], "dash": "solid"}, "projection": {"color": [200, 160, 0], "dash": "solid"}}, "new": {"cut": {"fill": [220, 30, 30], "color": [0, 0, 0]}, "projection": {"color": [200, 0, 0]}}, "existing": {"halftone": true}, "temporary": {"cut": {"fill": [255, 210, 0], "color": [0, 0, 0], "dash": "solid"}, "projection": {"color": [200, 160, 0], "dash": "solid"}}}}
 
 # I filtri delle fasi delle tre tavole.
 phase_filter {"name": "Stato di fatto", "new": "by-category", "existing": "by-category", "demolished": "by-category", "temporary": "not-displayed"}
-phase_filter {"name": "Comparativo", "new": "overridden", "existing": "overridden", "demolished": "overridden", "temporary": "not-displayed"}
+# Il comparativo mostra in giallo anche ciò che nasce e si demolisce nella stessa fase (temporaneo): un errore si vede.
+phase_filter {"name": "Comparativo", "new": "overridden", "existing": "overridden", "demolished": "overridden", "temporary": "overridden"}
 phase_filter {"name": "Stato di progetto", "new": "by-category", "existing": "by-category", "demolished": "not-displayed", "temporary": "not-displayed"}
 
 # Le tre piante del piano terra: la pianta del piano è lo stato di progetto; due copie per lo stato di fatto e il comparativo.
@@ -34,5 +35,5 @@ graphics {"view": "Piano terra - Stato di fatto", "phase": "Stato di fatto", "ph
 duplicate_view {"view": "Piano terra", "name": "Piano terra - Comparativo"}
 graphics {"view": "Piano terra - Comparativo", "phase": "Stato di progetto", "phase_filter": "Comparativo"}
 
-# Gli elementi nuovi nascono nello stato di progetto: il rilievo si disegna scegliendo "Stato di fatto" come fase.
-phase {"now": "Stato di progetto"}
+# La fase in cui nasce un elemento è quella della vista in cui lo si disegna (non si salva nel modello):
+# il rilievo nella pianta "Stato di fatto", il nuovo nella pianta del piano, Demolisci nel progetto o nel comparativo.
