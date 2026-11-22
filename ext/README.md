@@ -10,6 +10,7 @@ ext/
 ├── PIANO.md           ← il piano di lavoro, fase per fase
 ├── GUIDA-MAC.md       ← primo avvio di Claude Code sul MacBook
 ├── PRIMO-PROMPT.md    ← il messaggio da incollare nella prima sessione
+├── RIPRENDERE.md      ← il messaggio da incollare all'inizio di ogni sessione successiva
 ├── specifiche/        ← una specifica per ogni funzione stile Archicad
 └── bozze/             ← codice NON compilato, tenuto da parte (es. il ponte con Quadra)
 ```
