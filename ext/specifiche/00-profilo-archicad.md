@@ -65,8 +65,10 @@ termini tecnici comuni (glossario). "Arc" è solo il nome di lavoro di queste sp
 ## Proposta pubblicata
 
 [Discussione #586](https://github.com/IPedrax/BIMCraft/discussions/586), il 22/11/2026, nella categoria Ideas: seguito
-della #219 (chiusa da IPedrax con "Built"), il terzo profilo con la barra delle impostazioni in alto, Cmd+T e il
-Navigatore diviso per scopo; selezione, lucidi (collegati alla #427 di IPedrax) e priorità dei materiali come proposte
+della #219 (chiusa da IPedrax con "Built"). Riscritta lo stesso giorno, prima di ogni risposta, come **modifiche al
+profilo BIMCraft**: l'Ispettore in alto come barra delle impostazioni, i comandi di modifica in una barra orizzontale in
+alto, Cmd+T, il Navigatore diviso per scopo; in ogni profilo il clic sull'ultimo punto che termina la catena e lo schema
+di selezione Archicad facoltativo; il sidecar da Archicad (specifica 06); selezione, lucidi (collegati alla #427 di IPedrax) e priorità dei materiali come proposte
 separate. Si aspetta la risposta di IPedrax prima di scrivere codice.
 
 ## Prima bozza della proposta (superata dalla #586)

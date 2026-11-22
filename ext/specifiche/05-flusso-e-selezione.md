@@ -61,7 +61,7 @@ Solo comportamento, mai testi, icone o contenuti Graphisoft.
    senza lasciarlo (vedi la tabella sopra). Va nello schema di selezione.
 2. **Clic sull'ultimo punto della catena**: un clic sull'ultimo punto già messo termina la catena (muri, linee,
    polilinee), come un doppio clic. Oggi la catena finisce con Invio, Esc o un doppio clic; cliccare di nuovo il
-   primo punto la chiude. **(da verificare con Paolo: "termina", non "annulla")**
+   primo punto la chiude. (Confermato da Paolo: termina, i muri restano.)
 3. **Comandi di modifica in una barra orizzontale in alto**: sposta, ruota, specchia, offset, taglia… in fila
    orizzontale in alto, accanto o sopra la barra delle impostazioni, invece che nella colonna della palette.
 4. **Niente terzo profilo**: queste cose si propongono come modifiche al profilo BIMCraft (vedi [00](00-profilo-archicad.md)).
