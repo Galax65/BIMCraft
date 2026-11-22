@@ -57,5 +57,7 @@ del lato BIMCraft è in [bozze/quadra](bozze/quadra/).
 
 | Fase | Stato | Note |
 |---|---|---|
-| 0 | da fare | documenti preparati il 22/11/2026 (sessione su claude.ai, senza compilare) |
-| 1–7 | da fare | |
+| 0 | fatta il 22/11/2026 | macOS, Rust 1.99.1. `main` = `upstream/main` (81ebe7f2), remote `upstream` aggiunto, branch `it/main`. Controlli senza modifiche: fmt 6 s, clippy 1 min 19 s, test 24 min 52 s: 5423 passati, 0 falliti, 24 ignorati. PR #242 (italiano) accettata; la PR #194 è stata ripresa da upstream nel profilo BIMCraft (tavolozza strumenti, Inspector e Navigator: 1a605a6d, 29673574). `translations/ui/it.po`: 2226 voci su circa 4700 senza traduzione; "Project Browser" è tradotto "Navigatore di progetto", da rivedere quando nasce il Navigatore stile Archicad. |
+| 1 | da fare | Prima prova di Paolo nell'app: l'Inspector deve stare in alto (Info Box); Cmd-T deve aprire le impostazioni dello strumento; i lucidi mancano (Fase 2). Le palette oggi si agganciano solo a sinistra, a destra e in basso (`dock.rs`). Flusso di lavoro e selezione Archicad a confronto con BIMCraft: [05](specifiche/05-flusso-e-selezione.md); la selezione di Archicad (Shift+clic, Shift con uno strumento attivo) cambia il comportamento del mouse, non solo l'aspetto: va chiesta a IPedrax come schema di selezione. Issue per IPedrax non ancora pubblicata. |
+| Traduzioni | in corso | Glossario dei termini ([glossario](specifiche/glossario.md)) da approvare, poi le voci vuote di `it.po` a blocchi su `up/traduzione-it` (il file è di upstream). Le parole proprie di Archicad (Info Box, Navigatore) vanno in voci del profilo Arc, non nelle traduzioni comuni ai due profili. |
+| 2–7 | da fare | |
