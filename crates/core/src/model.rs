@@ -235,6 +235,13 @@ pub const MAX_SLOPE: f64 = 75.0;
 /// And a grid has a type (`type`), and a project holds grid types (`grid_types`, library entries of kind `grid-type`); a grid of
 /// 20 has none, and reading it as 21 gives it the type the standards name; a build that reads up to 20 would leave both out as
 /// fields it doesn't know and draw every grid in the one line it had, not say "saved by a newer BIMCraft".
+/// 21 also: a wall may be framed (`framing`, the name of a framing type, held by its GUID) and a project holds framing types
+/// (`types.framing`, library entries of kind `type:framing`); nothing in a file of 20 changes, but a build that reads up to
+/// 20 would leave a wall's `framing` and the project's framing types out of a file, unframing its walls without a word, not
+/// "saved by a newer BIMCraft".
+/// 21 also: a floor's `framing` and `framing_angle` (its joists worked out as a wall's studs are), and a framing type's `rim`,
+/// `lap`, `bridging`, `trimmers` and `under_partitions`; 21 isn't released, so it holds them with the walls'. And a roof's
+/// `framing` (its rafters worked out as a floor's joists are) and a framing type's `ridge`, held with them.
 pub const FORMAT: u32 = 21;
 /// How far past the model a level reaches without an extent of its own, mm.
 pub const LEVEL_PAST: f64 = 1000.0;
@@ -459,12 +466,25 @@ pub struct Wall {
     /// its ends stretch with what they meet; an unjoined wall's ends stay square and follow no one.
     #[serde(default = "yes", skip_serializing_if = "is_yes")]
     pub join: bool,
+    /// Revit's Cross-Section Slanted, Angle From Vertical: how far its faces lean from upright, degrees, toward its exterior
+    /// (its left) positive, its interior negative; 0 upright. It leans about its location line at its base.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub slant: f64,
+    /// Revit's Edit Profile: a straight, upright wall's shape in elevation in place of the rectangle from its base to its top.
+    /// Loops of `[along, up]` mm, along its location line from its start and up from its base; the first is its outline and any
+    /// others are holes in it. Empty, the rectangle.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub profile: Vec<Vec<P2>>,
     /// A curtain wall's edits, apart from its type.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub curtain: Option<crate::curtain::CurtainEdits>,
     /// The curtain wall and cell it stands in place of a panel in: kept fitted to that, it joins nothing and bounds no room.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub panel_of: Option<crate::curtain::PanelOf>,
+    /// Its framing type (`types.framing`), whose studs, plates and headers are worked out from it ([`crate::framing`]);
+    /// none, it isn't framed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framing: Option<String>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -662,10 +682,12 @@ pub const MAX_LAYERS: usize = 32;
 
 /// How see-through the starter library's glass is, percent.
 pub const GLASS_TRANSPARENCY: u8 = 70;
+/// And its water.
+pub const WATER_TRANSPARENCY: u8 = 50;
 
-/// A material of the project's library: its colour in shaded views, the pattern its cut shows in
-/// plans and sections, and the one its surfaces show where a plan looks down on a floor or a
-/// ceiling plan up at a ceiling.
+/// A material of the project's library: its colour in shaded views, the patterns its cut shows in plans and sections, and the
+/// ones its surfaces show where a plan looks down on a floor or a ceiling plan up at a ceiling: each a foreground over a
+/// background, as Revit's. Its parameters are in [`crate::materials`].
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Material {
@@ -680,12 +702,44 @@ pub struct Material {
     pub cut_pattern: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surface_pattern: Option<String>,
+    /// The colours its cut's and its surfaces' foreground patterns are drawn in; none, the drawing's own ink.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cut_color: Option<[u8; 3]>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_color: Option<[u8; 3]>,
+    /// What its cut and its surfaces show behind their foreground patterns.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cut_background: Option<PatternLayer>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_background: Option<PatternLayer>,
+    /// A picture its cut and its surfaces show in plans and sections in place of their patterns, foreground and background: a tile
+    /// of it its size in the building, turned and moved as a texture is (of kind `image`).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub cut_image: Option<Texture>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub surface_image: Option<Texture>,
     /// What its surfaces look like in the 3D view, over its colour.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub texture: Option<Texture>,
     /// How much of what lies behind its surfaces shows through them in the 3D view, percent: 0 (opaque) to 100.
     #[serde(default, skip_serializing_if = "is_clear")]
     pub transparency: u8,
+    /// Its values of the parameters every material has and of the project parameters for materials, by name.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub parameters: BTreeMap<String, serde_json::Value>,
+}
+
+/// A pattern behind a material's foreground: one drawn in code, or one of the project's fill patterns (`fill`, over it), in a
+/// colour of its own (none, the drawing's ink).
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PatternLayer {
+    #[serde(default)]
+    pub pattern: Pattern,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub fill: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub color: Option<[u8; 3]>,
 }
 
 fn is_clear(x: &u8) -> bool {
@@ -700,8 +754,15 @@ impl Default for Material {
             surface: Pattern::None,
             cut_pattern: None,
             surface_pattern: None,
+            cut_color: None,
+            surface_color: None,
+            cut_background: None,
+            surface_background: None,
+            cut_image: None,
+            surface_image: None,
             texture: None,
             transparency: 0,
+            parameters: BTreeMap::new(),
         }
     }
 }
@@ -773,6 +834,13 @@ pub struct Floor {
     /// or one slope.
     #[serde(default, skip_serializing_if = "Shape::is_empty")]
     pub shape: Shape,
+    /// Its framing type (`types.framing`), whose joists, rims, trimmers and blocking are worked out from it
+    /// ([`crate::framing::floor`]); none, it isn't framed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framing: Option<String>,
+    /// The way its joists run, degrees from +x; none, square to its outline's longest edge (spanning the short way).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framing_angle: Option<f64>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -1026,6 +1094,10 @@ pub struct Opening {
     /// Hinge on the other jamb.
     #[serde(default)]
     pub flip_hand: bool,
+    /// Revit's Orientation in a slanted wall: Slanted, leaning with the wall; else Vertical (the default), standing upright where
+    /// the wall has leant to halfway up it. The wall is cut the same either way. Nothing changes in an upright wall.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub slanted: bool,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -1201,7 +1273,8 @@ impl Kept {
 /// Which of an element's lines a dimension measures to: a wall's centre line, its face on the
 /// left or the right of its start-to-end direction, or its start or end; a column's centre line
 /// along its angle, the line across it, its faces or its end caps; a door's or a window's centre,
-/// or its jamb toward its wall's start or end. A grid has only its line.
+/// or its jamb toward its wall's start or end. A grid has only its line. A component has its family's reference planes: its
+/// centre lines, along and across it, and the others by GUID.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Face {
@@ -1217,6 +1290,10 @@ pub enum Face {
     /// A stair's edge seen in plan, by its place in [`crate::stairs::reference_edges`]: a run's side or end, a riser, a
     /// landing's edge.
     Edge(u32),
+    /// A component's reference plane, by its GUID in the component's family: one that stands upright and is a reference
+    /// ([`Model::component_reference_lines`]). Its datums are its `Centre` (Center (Front/Back)) and `Across` (Center
+    /// (Left/Right)), as a column's centre lines are. New in file format 21.
+    Plane(Guid),
 }
 
 impl Face {
@@ -1249,12 +1326,15 @@ impl Face {
             Face::Start => "start",
             Face::End => "end",
             Face::Edge(_) => "edge",
+            Face::Plane(_) => "reference plane",
         }
     }
 }
 
 /// A line a dimension measures to, or with `point`, the point at one end of it: a wall's centre line's end, a face's
-/// corner, a detail line's or a grid's end, a jamb's end at either face of its wall.
+/// corner, a detail line's or a grid's end, a jamb's end at either face of its wall. With `link`, an element of a linked
+/// model's: `id` is its GUID in the linked file, which never changes, and `link` the link, this project's element; it is
+/// measured in the link's model and placed as the link stands ([`Model::link_map`]).
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Reference {
@@ -1263,12 +1343,25 @@ pub struct Reference {
     pub face: Face,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub point: Option<End>,
+    /// The link whose model `id` is an element of. New in file format 21.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub link: Option<Guid>,
 }
 
 impl Reference {
     /// Element `id`'s line `face`.
     pub fn line(id: Guid, face: Face) -> Reference {
-        Reference { id, face, point: None }
+        Reference { id, face, point: None, link: None }
+    }
+
+    /// The same reference, as the linked model it names an element of sees it: without its `link`.
+    pub fn own(self) -> Reference {
+        Reference { link: None, ..self }
+    }
+
+    /// The element of this project it points at: its own, or for a linked model's, its link.
+    pub fn target(&self) -> Guid {
+        self.link.unwrap_or(self.id)
     }
 
     /// The same of a mirrored element, which runs back the other way ([`Face::mirrored`]): the end of a line along it
@@ -1611,6 +1704,68 @@ pub struct CadImport {
     pub colors: Colors,
 }
 
+/// A picture placed in a plan, as Revit's Insert > Image (and Link Image, with `path`), or a PDF's page as one, as Revit's
+/// Insert > PDF: the project's `picture` (one of
+/// `Model::images`) with its middle on `at` on `level`, `width` mm across and as tall as its pixels say. With a `view`, only
+/// that plan shows it; without, every plan of its level does. It is drawn under the model, as a CAD import is. Linked, it
+/// keeps the file it came from, which `reload_image` reads again; the project holds the picture, so it opens without it.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct PlacedImage {
+    pub picture: String,
+    pub level: Guid,
+    pub at: P2,
+    pub width: f64,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub view: Option<Guid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub path: Option<String>,
+    /// The page of the PDF it is, from 1, when it's one: `reload_image` draws that page again.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub page: Option<u32>,
+    /// Drawn over the model rather than under it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub front: bool,
+    /// Mirrored left to right, and top to bottom: what `mirror` about an upright or a level line makes of it.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub flip_x: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub flip_y: bool,
+    /// A PDF's page snapped to: its lines' and shapes' edges, their ends and middles, as a CAD import's (`snap.rs`).
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub snaps: bool,
+}
+
+/// The widest an image placed may be, mm: 10 km.
+pub const MAX_IMAGE_WIDTH: f64 = 1e7;
+
+impl PlacedImage {
+    /// Its PDF page's size on paper, mm, when it is one the project holds as a drawing.
+    pub fn paper(&self, m: &Model) -> Option<[f64; 2]> {
+        let d = m.pdfs.get(&self.picture)?.drawing();
+        Some([d.size[0] * 25.4 / 72.0, d.size[1] * 25.4 / 72.0])
+    }
+
+    /// How tall it stands, mm: its width over its paper's aspect when it's a PDF's page (exact, so a drawing to scale lies
+    /// true), else its picture's; none where the project doesn't hold its picture.
+    pub fn height(&self, m: &Model) -> Option<f64> {
+        let (w, h) = m.images.get(&self.picture)?.size();
+        if let Some([pw, ph]) = m.pdfs.get(&self.picture).map(|d| d.drawing().size)
+            && pw > 0.0
+            && ph > 0.0
+        {
+            return Some(self.width * ph / pw);
+        }
+        (w > 0).then(|| self.width * h as f64 / w as f64)
+    }
+
+    /// Its corners, lower left and upper right, in plan.
+    pub fn bounds(&self, m: &Model) -> Option<[P2; 2]> {
+        let h = self.height(m)?;
+        Some([P2(self.at.0 - self.width / 2.0, self.at.1 - h / 2.0), P2(self.at.0 + self.width / 2.0, self.at.1 + h / 2.0)])
+    }
+}
+
 /// Where a placed drawing's point `p`, in its own units, is in plan, mm.
 pub fn cad_place(ci: &CadImport) -> impl Fn(P2) -> P2 + use<> {
     let (sin, cos) = ci.angle.to_radians().sin_cos();
@@ -1707,6 +1862,10 @@ pub struct Link {
     /// By base points or shared coordinates, where it stood when last worked out with its file loaded.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placed: Option<Placed>,
+    /// Unloaded, as Manage Links unloads it: it stays where it stands and draws nothing, and opening the project doesn't
+    /// read its file. `reload` loads it again. An older version leaves it out of a file and loads the link.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub unloaded: bool,
 }
 
 /// Where a link stood when it was last worked out with its file loaded: its origin in plan, its turn, degrees, and how far it
@@ -1772,6 +1931,56 @@ pub struct PlanView {
     /// What it shows under it, as Archicad's Trace & Reference ([`crate::underlay`]): kept while it is off.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub underlay: Option<crate::underlay::Underlay>,
+}
+
+/// A detail view: a fragment of a plan, section or elevation, drawn larger at its own scale, with annotation of its own.
+/// Its `region` is in the parent view's coordinates: the south-west and north-east corners in a plan, or its distance along
+/// the parent line from its start and its height in a section or an elevation. The fragment follows the model: annotation
+/// on it is kept in the parent's coordinates and is drawn at this view's scale.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct DetailView {
+    pub name: String,
+    /// The view this is a fragment of.
+    pub parent: Guid,
+    /// The fragment, in the parent's coordinates, mm: its south-west and north-east corners in a plan, or its start along
+    /// the line and its bottom, and its end and its top, in a section or an elevation.
+    pub region: [P2; 2],
+    /// The paper it stands for, 1 : `scale`.
+    pub scale: f64,
+    /// Its number on callouts and on its title (`У-03`), kept apart from its name.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub number: String,
+    /// Where its mark stands in the parent's coordinates; none, just outside the fragment's north-east corner. The leader
+    /// runs from the mark to the fragment's boundary.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub mark: Option<P2>,
+    /// What it hides and how it draws the rest.
+    #[serde(default, skip_serializing_if = "Graphics::is_default")]
+    pub graphics: Graphics,
+}
+
+impl DetailView {
+    /// The middle of its region, in the parent's coordinates.
+    pub fn middle(&self) -> P2 {
+        (self.region[0] + self.region[1]) * 0.5
+    }
+
+    /// What its mark says: its name, without the number the name starts with (`D-01 Corner` reads `Corner`; renamed, the new
+    /// name reads as it is). A view named only by its number keeps it.
+    pub fn label(&self) -> &str {
+        let name = self.name.trim();
+        let number = self.number.trim();
+        if !number.is_empty()
+            && let Some(rest) = name.strip_prefix(number)
+        {
+            let rest = rest.trim_start();
+            if !rest.is_empty() {
+                return rest;
+            }
+        }
+        name
+    }
 }
 
 /// A 3D view, seen from `azimuth` degrees round from east (counter-clockwise) and `elevation`
@@ -2337,6 +2546,10 @@ pub struct Roof {
     /// underside following its top.
     #[serde(default, skip_serializing_if = "Shape::is_empty")]
     pub shape: Shape,
+    /// Its framing type (`types.framing`), whose rafters, ridge boards, rims, trimmers and blocking are worked out from it
+    /// ([`crate::framing::roof`]); none, it isn't framed.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub framing: Option<String>,
     /// Its values of the project's parameters, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub params: BTreeMap<String, serde_json::Value>,
@@ -2640,12 +2853,14 @@ macro_rules! visit_refs {
                 }
             }
             Element::PanelSchedule(ps) => f(& $($m)? ps.panel),
+            Element::RebarDetail(rd) => f(& $($m)? rd.host),
             Element::Grid(_) | Element::RefPlane(_) | Element::Sheet(_) | Element::Schedule(_) | Element::Link(_) | Element::ProjectInfo(_) => {}
             Element::PlanView(v) => {
                 f(& $($m)? v.level);
                 if let Some(g) = & $($m)? v.parent { f(g) }
                 if let Some(u) = & $($m)? v.underlay { f(& $($m)? u.view) }
             }
+            Element::DetailView(v) => f(& $($m)? v.parent),
             Element::Wall(w) => {
                 f(& $($m)? w.level);
                 if let Some(g) = & $($m)? w.top_level { f(g) }
@@ -2677,8 +2892,12 @@ macro_rules! visit_refs {
             Element::Dimension(d) => {
                 f(& $($m)? d.level);
                 if let Some(g) = & $($m)? d.view { f(g) }
+                // A reference to a linked model's element points at its link: its `id` is the linked file's.
                 for r in & $($m)? d.refs {
-                    f(& $($m)? r.id);
+                    match & $($m)? r.link {
+                        Some(link) => f(link),
+                        None => f(& $($m)? r.id),
+                    }
                 }
             }
             Element::Tag(t) => {
@@ -2735,6 +2954,10 @@ macro_rules! visit_refs {
             Element::CadImport(ci) => {
                 f(& $($m)? ci.level);
                 if let Some(g) = & $($m)? ci.view { f(g) }
+            }
+            Element::Image(im) => {
+                f(& $($m)? im.level);
+                if let Some(g) = & $($m)? im.view { f(g) }
             }
             Element::RoomSeparator(rs) => f(& $($m)? rs.level),
             Element::PropertyLine(pl) => f(& $($m)? pl.level),
@@ -2825,15 +3048,23 @@ pub enum Element {
     Schedule(Schedule),
     View3D(View3D),
     PlanView(PlanView),
+    /// A detail view: a fragment of a plan, section or elevation, at its own scale (`detail_view`).
+    #[serde(rename = "detail")]
+    DetailView(DetailView),
     Link(Link),
     /// A scan placed in the model.
     PointCloud(PointCloud),
     /// A CAD drawing placed in the model.
     CadImport(CadImport),
+    /// A picture placed in a plan.
+    Image(PlacedImage),
     /// An electrical circuit: devices on a distribution board, behind one breaker.
     Circuit(crate::electrical::Circuit),
     /// A distribution board's load schedule, a view of its own.
     PanelSchedule(crate::panel_schedule::PanelSchedule),
+    /// A reinforced member's detail drawing, a view of its own that goes on a sheet: its bars' sets tagged, its sections and its
+    /// steel list, drawn from the member and its bars as they are ([`crate::rebar_detail`]).
+    RebarDetail(crate::rebar_detail::RebarDetail),
     /// The project's information (Revit's Project Information): one in a project at most.
     #[serde(rename = "project")]
     ProjectInfo(crate::project_info::ProjectInfo),
@@ -3022,10 +3253,12 @@ impl Element {
             Element::Link(_) => "link",
             Element::PointCloud(_) => "pointcloud",
             Element::CadImport(_) => "cadimport",
+            Element::Image(_) => "image",
             Element::ProjectInfo(_) => crate::project_info::CATEGORY,
             Element::Schedule(_) => "schedule",
             Element::View3D(_) => "view3d",
             Element::PlanView(_) => "planview",
+            Element::DetailView(_) => "detail",
             Element::Level(_) => "level",
             Element::Grid(_) => "grid",
             Element::RefPlane(_) => "refplane",
@@ -3046,6 +3279,7 @@ impl Element {
             Element::Tag(_) => "tag",
             Element::Circuit(_) => "circuit",
             Element::PanelSchedule(_) => "panelschedule",
+            Element::RebarDetail(_) => "rebardetail",
             Element::Section(_) => "section",
             Element::Elevation(_) => "elevation",
             Element::Sheet(_) => "sheet",
@@ -3683,6 +3917,9 @@ pub struct RunType {
     pub material: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub profile: Option<Profile>,
+    /// Measured usable section, independently of the drawn outside dimensions.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub clear_section: Option<crate::carrier_fill::ClearSection>,
 }
 
 /// The categories whose elements are runs, as `Element::run` returns them.
@@ -3898,6 +4135,9 @@ pub struct Types {
     /// The types of the Corner Mullion system family, what stands where two curtain walls meet.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub corner_mullion: BTreeMap<String, crate::curtain::MullionType>,
+    /// Framing types: how a framed wall's studs, plates and headers go. A new project has none; `frame` makes one.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub framing: BTreeMap<String, crate::framing::FramingType>,
 }
 
 /// What a project parameter holds: text, a number, a length (mm), or yes or no.
@@ -3993,7 +4233,7 @@ pub struct Classification {
 pub const MAX_PROJECT_PARAMETERS: usize = 4096;
 
 /// The categories project parameters are for.
-pub const PARAMETER_CATEGORIES: [&str; 27] = [
+pub const PARAMETER_CATEGORIES: [&str; 28] = [
     "wall",
     "floor",
     "ceiling",
@@ -4021,6 +4261,7 @@ pub const PARAMETER_CATEGORIES: [&str; 27] = [
     "groundconductor",
     "cable",
     "project",
+    "material",
 ];
 
 impl ProjectParameter {
@@ -4227,6 +4468,10 @@ pub struct Model {
     /// The pictures its materials' textures are made of, by id.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub images: BTreeMap<String, Picture>,
+    /// The PDFs' pages its images place, drawn as lines and fills: by the id of the picture of each in `images`, which an
+    /// older version, leaving this out of a file, shows instead.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub pdfs: BTreeMap<String, crate::pdf_in::PdfDoc>,
     /// The scans its point clouds place, by name.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty", deserialize_with = "crate::cloud::deserialize_scans")]
     pub clouds: BTreeMap<String, Cloud>,
@@ -4467,6 +4712,7 @@ impl Model {
             types: Types::default().into(),
             materials: BTreeMap::new().into(),
             images: BTreeMap::new(),
+            pdfs: BTreeMap::new(),
             clouds: BTreeMap::new(),
             cads: BTreeMap::new(),
             families: BTreeMap::new().into(),
@@ -4541,6 +4787,40 @@ impl Model {
             let transparency = if name == "Glass" { GLASS_TRANSPARENCY } else { 0 };
             m.materials.insert(language.word(name).into(), Material { color, cut, surface, texture, transparency, ..Material::default() });
         }
+        // Ground and finishes shown by a picture: an image fill on their surfaces in plan, the same picture their texture in 3D,
+        // each a tile `size` mm across and up (the pictures' sources are in `assets/materials/README.md` and NOTICE).
+        for (name, file, bytes, color, cut, size) in [
+            (msg!("Grass"), "grass", &include_bytes!("../assets/materials/grass.jpg")[..], [71, 85, 45], Pattern::None, [1000.0, 1000.0]),
+            (
+                msg!("Gravel"),
+                "gravel",
+                &include_bytes!("../assets/materials/gravel.jpg")[..],
+                [106, 98, 70],
+                Pattern::Concrete,
+                [1000.0, 1000.0],
+            ),
+            (msg!("Wood"), "wood", &include_bytes!("../assets/materials/wood.jpg")[..], [154, 112, 66], Pattern::Diagonal, [600.0, 600.0]),
+            (
+                msg!("Paving"),
+                "paving",
+                &include_bytes!("../assets/materials/paving.jpg")[..],
+                [134, 135, 131],
+                Pattern::Concrete,
+                [800.0, 512.0],
+            ),
+            (msg!("Water"), "water", &include_bytes!("../assets/materials/water.jpg")[..], [65, 175, 189], Pattern::None, [2000.0, 2000.0]),
+        ] {
+            let Some(picture) = Picture::bundled(file, bytes) else { continue };
+            let id = picture.id();
+            m.images.insert(id.clone(), picture);
+            let fill = Texture { size, ..Texture::new(Kind::Image) };
+            let fill = Texture { image: id, ..fill };
+            // Water lets what lies under it show, half and half.
+            let transparency = if name == "Water" { WATER_TRANSPARENCY } else { 0 };
+            let material =
+                Material { color, cut, surface_image: Some(fill.clone()), texture: Some(fill), transparency, ..Material::default() };
+            m.materials.insert(language.word(name).into(), material);
+        }
         m.families = crate::family::library(language).into();
         for (n, t) in [("Generic - 200mm", 200.0), ("Interior - 100mm", 100.0)] {
             m.types.wall.insert(n.into(), WallType { thickness: t, layers: Vec::new(), curtain: None });
@@ -4580,8 +4860,14 @@ impl Model {
         for (n, w) in [("Footing 1200 x 1200", 1200.0), ("Footing 1500 x 1500", 1500.0)] {
             m.types.footing.insert(n.into(), ColumnType { width: w, depth: w, round: false, profile: None });
         }
-        let run =
-            |width, depth, round, material: &str| RunType { width, depth, round, material: language.word(material).into(), profile: None };
+        let run = |width, depth, round, material: &str| RunType {
+            width,
+            depth,
+            round,
+            material: language.word(material).into(),
+            profile: None,
+            clear_section: None,
+        };
         let beams = [
             ("Beam 200 x 500", run(200.0, 500.0, false, "Concrete")),
             ("Beam 150 x 400", run(150.0, 400.0, false, "Concrete")),
@@ -4913,6 +5199,49 @@ impl Model {
             P2(p[0], p[1])
         };
         marks.iter().map(|k| k.map(place)).collect()
+    }
+
+    /// The lines dimensions measure to on component `c` in plan, as Revit's dimension a family instance: its family's
+    /// reference planes that stand upright and are a reference (Strong, Weak, or one of the named sides and middles; not Not
+    /// a Reference), each where it stands for the component's values ([`crate::family::Family::flexed`]), mirrored if it is,
+    /// turned and moved to where it stands, as its symbols are. Its datums are its centre lines: Center (Front/Back), along
+    /// it, its `Centre`, and Center (Left/Right), across it, its `Across`; every other plane is `Plane`, by its GUID. The weak
+    /// ones come last, so where planes lie over each other the nearest taken is a strong or a named one, as Revit prefers.
+    /// None for a component tilted off the plan or placed by adaptive points, or whose family doesn't work out.
+    pub fn component_reference_lines(&self, c: &Component) -> Vec<(Face, Line)> {
+        let Some(f) = self.families.get(&c.family) else { return Vec::new() };
+        let placed = self.component_placement(c);
+        if !placed.upright || self.placed_by_points(c) {
+            return Vec::new();
+        }
+        let Ok(values) = f.values(&c.type_name, &c.params) else { return Vec::new() };
+        let Ok(flexed) = f.flexed(&values) else { return Vec::new() };
+        let flip = if c.mirrored { -1.0 } else { 1.0 };
+        let place = |p: [f64; 3]| {
+            let q = placed.place([p[0], flip * p[1], 0.0]);
+            P2(q[0], q[1])
+        };
+        // Upright: the plane's up runs plumb, so plan sees it edge on, as its line.
+        let upright = |u: [f64; 3]| u[2].abs() > 0.0 && u[0].hypot(u[1]) <= 1e-9 * u[2].abs();
+        let mut lines: Vec<(bool, Face, Line)> = flexed
+            .planes
+            .iter()
+            .filter(|pl| !pl.level && pl.reference != crate::family::Reference::NotAReference && upright(pl.up))
+            .filter_map(|pl| {
+                let face = match pl.guid {
+                    g if g == crate::family::CENTER_FRONT_BACK => Face::Centre,
+                    g if g == crate::family::CENTER_LEFT_RIGHT => Face::Across,
+                    g if g.is_nil() => return None,
+                    g => Face::Plane(g),
+                };
+                let (a, b) = (place(pl.start), place(pl.end));
+                let weak = pl.reference == crate::family::Reference::Weak;
+                (a.dist(b) > 1e-6 && a.is_finite() && b.is_finite()).then_some((weak, face, (a, b)))
+            })
+            .collect();
+        // A stable sort: the family's own order stands within the strong ones and within the weak.
+        lines.sort_by_key(|(weak, ..)| *weak);
+        lines.into_iter().map(|(_, face, l)| (face, l)).collect()
     }
 
     /// Where component `c`'s room is found from: its family's room calculation point for its values, mirrored, turned and
@@ -5300,6 +5629,9 @@ impl Model {
     /// (`1` is `100000`, `7` is `100006`).
     pub fn migrate(&mut self) {
         self.codes_from_386();
+        // A material's patterns behind its foreground and its parameters need no step: a file without them has none. A file
+        // may hold a value of a parameter it doesn't have, which is left out.
+        crate::materials::tidy(self);
         // A file from before #502 keeps a utility's or a country's changed method among the project's changes: into its layer.
         if crate::codes::WHOLE.iter().any(|(d, k)| self.codes.choice(*d).changes.contains_key(*k)) {
             self.codes.methods_into_layers();
@@ -5496,8 +5828,11 @@ impl Model {
         // 20 to 21: a family's `placed_origin`, the origin its instances stand against. A file of 20 holds none, which is the datums,
         // so `settle_origins` on read makes it the family's origin and moves nothing: its instances stay where they were drawn.
         // 20 to 21: dimensions in sections and elevations. A file of 20 holds none, so nothing to do.
+        // 20 to 21: dimensions measuring to a component's reference planes (`Face::Plane`, and a component's `centre` and
+        // `across`), and to a linked model's elements (`Reference::link`). A file of 20 holds none, so nothing to do.
         // 20 to 21: the building codes. `codes_from_386` above takes a file's `building_code`, `stair_rules` and `building_codes` into
         // `codes`; a file of 20 holds none of them, so nothing to do.
+        // 20 to 21 (framed walls and framing types) has no step: a file of 20 holds none.
         self.format = FORMAT;
     }
 
@@ -5548,6 +5883,14 @@ impl Model {
     fn typed_grids(&mut self) {
         if self.grid_types.is_empty() {
             self.grid_types = crate::grids::types(self.language);
+        }
+        // A file from before grid types holds none of the grid line patterns either: those its starter types draw in are
+        // added. Its `grid_types` are filled from the starter set on reading, so it is the format that tells it apart. One
+        // of the same name stays as it is.
+        if self.format < FORMAT {
+            for (name, pattern) in crate::lines::grid_patterns(self.language) {
+                self.line_patterns.entry(name).or_insert(pattern);
+            }
         }
         let wanted = crate::grids::default_type(&self.grid_types, self.language).cloned().unwrap_or_default();
         for e in self.elements.values_mut() {
@@ -6005,7 +6348,11 @@ impl Model {
     /// The view range plan `key` has (a level's own plan, or a plan view): its own, unless a view template it follows controls
     /// it, or it is a dependent view, which has its parent's.
     pub fn view_range_of(&self, key: impl Key) -> ViewRange {
-        let key = self.plan_source(key);
+        // A detail view follows the plan it is a fragment of.
+        let key = match self.elements.get(key) {
+            Some(Element::DetailView(v)) => v.parent,
+            _ => self.plan_source(key),
+        };
         let (range, graphics) = match self.elements.get(key) {
             Some(Element::Level(l)) => (l.view_range, &l.graphics),
             Some(Element::PlanView(v)) => (v.view_range, &v.graphics),
@@ -6066,6 +6413,8 @@ impl Model {
         match self.elements.get(key)? {
             Element::Level(_) => self.elements.id(key),
             Element::PlanView(v) => self.elements.id(v.level),
+            // A detail of a plan is of the plan's level.
+            Element::DetailView(v) => self.plan_level(v.parent),
             _ => None,
         }
     }
@@ -6110,6 +6459,8 @@ impl Model {
         match self.elements.get(key)? {
             Element::Level(l) => l.crop,
             Element::PlanView(v) => v.crop,
+            // A detail shows its fragment, whichever plan its parent is.
+            Element::DetailView(v) if self.plan_level(v.parent).is_some() => Some(v.region),
             _ => None,
         }
     }
@@ -6164,6 +6515,7 @@ impl Model {
             "curtainpanel" => names(&self.types.curtain_panel),
             "mullion" => names(&self.types.mullion),
             "cornermullion" => names(&self.types.corner_mullion),
+            "framing" => names(&self.types.framing),
             run if RUN_CATEGORIES.contains(&run) => self.types.runs.get(run).map(names).unwrap_or_default(),
             _ => Vec::new(),
         }
@@ -6192,6 +6544,7 @@ impl Model {
             "curtainpanel" => crate::curtain::GLAZED,
             "mullion" => crate::curtain::RECTANGULAR_MULLION,
             "cornermullion" => crate::curtain::RECTANGULAR_CORNER,
+            "framing" => crate::framing::DEFAULT_TYPE,
             "structuralcolumn" => "Concrete 300 x 300",
             "footing" => "Footing 1200 x 1200",
             "beam" => "Beam 200 x 500",
@@ -6325,19 +6678,56 @@ impl Model {
     /// A door's or a window's family's axes in the model, as its pieces have them, the opening's flips taken already
     /// ([`Model::opening_local`]): its insertion point in the middle of its wall at `offset` along its line and `sill` up from
     /// its base, x along the wall there, y across it, z up; the family placed by its origin there
-    /// ([`crate::hosting::Placement::by_origin`]).
+    /// ([`crate::hosting::Placement::by_origin`]). In a slanted wall, a slanted one ([`Opening::slanted`]) stands where the wall
+    /// has leant to at its sill, its z leaning with the wall ([`Model::opening_lean`]), so it stays in the wall all the way up;
+    /// a vertical one stands upright where the wall has leant to halfway up it.
     pub fn opening_placement(&self, o: &Opening) -> Option<crate::hosting::Placement> {
+        self.opening_placement_as(o, o.slanted)
+    }
+
+    /// [`Model::opening_placement`] for `o` slanted or not: slanted, what its voids stand in, leaning with the wall so they cut
+    /// it the same whichever way the opening stands.
+    fn opening_placement_as(&self, o: &Opening, slanted: bool) -> Option<crate::hosting::Placement> {
         let w = self.wall(o.host)?;
+        let sill = self.own_base(w) + o.sill;
+        let across = if slanted || w.slant == 0.0 { sill } else { sill + self.opening_rise(o) / 2.0 };
         let axis = walls::Axis::of(w);
-        let (at, u) = (axis.at(o.offset, walls::centre(self, w)), axis.tangent(o.offset));
+        let (at, u) = (axis.at(o.offset, walls::centre(self, w) + walls::lean(self, w, across)), axis.tangent(o.offset));
         let n = u.perp();
-        let insertion = [at.0, at.1, self.own_base(w) + o.sill];
+        let lean = if slanted { self.host_lean(o) } else { 0.0 };
+        let insertion = [at.0, at.1, sill];
         Some(crate::hosting::Placement::by_origin(
             insertion,
-            [[u.0, u.1, 0.0], [n.0, n.1, 0.0], [0.0, 0.0, 1.0]],
+            [[u.0, u.1, 0.0], [n.0, n.1, 0.0], [lean * n.0, lean * n.1, 1.0]],
             true,
             self.opening_origin(o),
         ))
+    }
+
+    /// A door's or window's height, as its type or family says; 0 where neither does.
+    fn opening_rise(&self, o: &Opening) -> f64 {
+        let Some(name) = &o.family else {
+            return self.types.door.get(&o.type_name).or_else(|| self.types.window.get(&o.type_name)).map_or(0.0, |t| t.height);
+        };
+        let wall = self.wall(o.host).map_or(crate::family::DEFAULT_WALL, |w| self.thickness(w));
+        match self.families.get(name).and_then(|f| f.values_in(&o.type_name, &o.params, wall).ok()) {
+            Some(v) => match v.get(crate::family::HEIGHT) {
+                Some(crate::family::Val::Number(h)) => *h,
+                _ => 0.0,
+            },
+            None => 0.0,
+        }
+    }
+
+    /// How far a door or window moves across its wall for each mm it rises: a slanted one, its slanted wall's lean, which it
+    /// leans with, so it stays in the wall all the way up; 0 for a vertical one and in an upright wall.
+    pub fn opening_lean(&self, o: &Opening) -> f64 {
+        if o.slanted { self.host_lean(o) } else { 0.0 }
+    }
+
+    /// How far door or window `o`'s wall moves across for each mm it rises: 0 upright.
+    pub fn host_lean(&self, o: &Opening) -> f64 {
+        self.wall(o.host).map_or(0.0, |w| walls::lean(self, w, self.own_base(w) + 1.0) - walls::lean(self, w, self.own_base(w)))
     }
 
     /// The origin of door or window `o`'s family in its own axes, flipped as the opening is: none (the datums' crossing) for
@@ -6436,7 +6826,7 @@ impl Model {
     /// [`Model::opening_voids_local`] where the opening stands, in the model's own axes.
     pub fn opening_voids(&self, e: &Element) -> Vec<Vec<[crate::view3d::P3; 3]>> {
         let (Element::Door(o) | Element::Window(o)) = e else { return Vec::new() };
-        let Some(placed) = self.opening_placement(o) else { return Vec::new() };
+        let Some(placed) = self.opening_placement_as(o, true) else { return Vec::new() };
         self.opening_voids_local(e).into_iter().map(|v| v.iter().map(|t| t.map(|p| placed.place(p))).collect()).collect()
     }
 
@@ -6476,6 +6866,7 @@ impl Model {
         match e {
             Element::PointCloud(pc) => Some(pc.level),
             Element::CadImport(ci) => Some(ci.level),
+            Element::Image(im) => Some(im.level),
             Element::ModelGroup(g) => Some(g.level),
             Element::Wall(w) => Some(w.level),
             Element::Floor(f) => Some(f.level),
@@ -6518,9 +6909,11 @@ impl Model {
             | Element::Viewport(_)
             | Element::Schedule(_)
             | Element::PanelSchedule(_)
+            | Element::RebarDetail(_)
             | Element::Link(_)
             | Element::ProjectInfo(_)
             | Element::Dimension3D(_)
+            | Element::DetailView(_)
             | Element::View3D(_) => None,
         }
     }
@@ -6672,6 +7065,8 @@ impl Model {
             pattern_angle: 0.0,
             sketch: Vec::new(),
             shape: r.shape.clone(),
+            framing: None,
+            framing_angle: None,
             params: BTreeMap::new(),
         }
     }
@@ -6693,6 +7088,8 @@ impl Model {
             pattern_angle: 0.0,
             sketch: Vec::new(),
             shape: t.shape.clone(),
+            framing: None,
+            framing_angle: None,
             params: BTreeMap::new(),
         }
     }
@@ -7477,17 +7874,20 @@ impl Model {
             Some(Element::Section(v) | Element::Elevation(v)) => Some(&v.name),
             Some(Element::Schedule(sc)) => Some(&sc.name),
             Some(Element::PanelSchedule(ps)) => Some(&ps.name),
+            Some(Element::RebarDetail(rd)) => Some(&rd.name),
             Some(Element::View3D(v)) => Some(&v.name),
             Some(Element::PlanView(v)) => Some(&v.name),
+            Some(Element::DetailView(v)) => Some(&v.name),
             _ => None,
         }
     }
 
-    /// The views, by id: the levels' plans, the plan views, sections, elevations, schedules and 3D views. From the lookup.
+    /// The views, by id: the levels' plans, the plan views, sections, elevations, detail views, schedules and 3D views. From
+    /// the lookup.
     pub fn views(&self) -> BTreeSet<Id> {
         let lookup = self.lookup();
         let mut ids: BTreeSet<Id> = lookup.levels().collect();
-        for cat in ["planview", "section", "elevation", "schedule", "panelschedule", "view3d"] {
+        for cat in ["planview", "section", "elevation", "detail", "schedule", "panelschedule", "rebardetail", "view3d"] {
             ids.extend(lookup.rare(cat));
         }
         ids
@@ -7524,6 +7924,33 @@ impl Model {
     pub fn section(&self, id: impl Key) -> Option<&Section> {
         match self.elements.get(id) {
             Some(Element::Section(v) | Element::Elevation(v)) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// Section or elevation `id`, or the section a detail view of one shows: its region cut from its parent's line, with
+    /// the detail's own name and graphics. None for another view.
+    pub fn section_geometry(&self, id: impl Key) -> Option<Section> {
+        match self.elements.get(id)? {
+            Element::Section(v) | Element::Elevation(v) => Some(v.clone()),
+            Element::DetailView(d) => {
+                let parent = match self.elements.get(d.parent)? {
+                    Element::Section(v) | Element::Elevation(v) => v,
+                    _ => return None,
+                };
+                let u = (parent.end - parent.start).unit();
+                let [lo, hi] = d.region;
+                let mut s = parent.clone();
+                s.name = d.name.clone();
+                s.start = parent.start + u * lo.0;
+                s.end = parent.start + u * hi.0;
+                s.crop = Some([lo.1, hi.1]);
+                s.mark = None;
+                s.reference = parent.reference;
+                s.graphics = d.graphics.clone();
+                s.underlay = None;
+                Some(s)
+            }
             _ => None,
         }
     }
@@ -7657,8 +8084,21 @@ impl Model {
             Face::Right => (c.at - v * d - u * w, c.at - v * d + u * w),
             Face::Start => (c.at - u * w - v * d, c.at - u * w + v * d),
             Face::End => (c.at + u * w - v * d, c.at + u * w + v * d),
-            Face::Edge(_) => return Err(format!("column {id} has no numbered edges; measure to its centre lines or faces")),
+            Face::Edge(_) | Face::Plane(_) => {
+                return Err(format!("column {id} has no numbered edges or reference planes; measure to its centre lines or faces"));
+            }
         })
+    }
+
+    /// Where link `link` (this project's element) stands: its model as it was loaded, and the map from that model's plan to
+    /// this project's, turned and moved as the views draw it ([`crate::link::placement`]). A link that isn't loaded, or that
+    /// is no link, gives why.
+    pub fn link_map(&self, link: Guid) -> Result<(&Model, impl Fn(P2) -> P2 + use<>), String> {
+        let Some(Element::Link(l)) = self.elements.get(link) else { return Err(format!("{link} isn't a link of this project")) };
+        let other = self.loaded.get(&l.path).ok_or_else(|| format!("link {} isn't loaded", l.name))?;
+        let (at, angle, _) = crate::link::placement(self, l, other);
+        let (sin, cos) = angle.to_radians().sin_cos();
+        Ok((other.as_ref(), move |p: P2| P2(p.0 * cos - p.1 * sin + at.0, p.0 * sin + p.1 * cos + at.1)))
     }
 
     /// The line `r` measures to, or why there is none. A straight wall's lines reach as far as its
@@ -7666,6 +8106,12 @@ impl Model {
     /// window's centre and jambs, run across it from face to face. Its centre is its centre line,
     /// wherever its location line is.
     pub fn reference_line(&self, r: &Reference) -> Result<Line, String> {
+        // A linked model's element: measured there, placed as the link stands.
+        if let Some(link) = r.link {
+            let (other, map) = self.link_map(link)?;
+            let (a, b) = other.reference_line(&r.own()).map_err(|e| format!("in the linked model: {e}"))?;
+            return Ok((map(a), map(b)));
+        }
         match (self.elements.get(r.id), r.face) {
             (Some(Element::Stair(st)), Face::Edge(i)) => crate::stairs::reference_edges(self, st)
                 .get(i as usize)
@@ -7673,6 +8119,18 @@ impl Model {
                 .ok_or_else(|| format!("stair {} has no edge {i} any more: it was changed; measure to it again", r.id)),
             (Some(Element::Stair(_)), _) => Err(format!("stair {}'s lines are its edges (`face`: {{\"edge\": n}})", r.id)),
             (_, Face::Edge(_)) => Err(format!("element {} has no numbered edges; only a stair does", r.id)),
+            // A component's lines are its family's reference planes, placed where it stands.
+            (Some(Element::Component(c)), face) => {
+                self.component_reference_lines(c).into_iter().find(|(f, _)| *f == face).map(|(_, l)| l).ok_or_else(|| {
+                    format!(
+                        "component {} has no such {} in plan: measure to its centre lines (`centre`, `across`) or to a reference \
+                         plane of its family that stands upright and is a reference",
+                        r.id,
+                        face.name()
+                    )
+                })
+            }
+            (Some(e), Face::Plane(_)) => Err(format!("{} {} has no reference planes; only a component does", e.category(), r.id)),
             (Some(Element::Grid(g)), Face::Centre) => Ok((g.start, g.end)),
             (Some(Element::Grid(_)), _) => Err(format!("grid {} has no faces; measure to its line", r.id)),
             (Some(e @ (Element::Column(_) | Element::StructuralColumn(_))), face) => self.column_reference_line(e, face, r.id),
@@ -7698,7 +8156,7 @@ impl Model {
                     Face::Right => (axis.at(a, int), axis.at(b, int)),
                     Face::Start => (axis.at(a, int), axis.at(a, ext)),
                     Face::End => (axis.at(b, int), axis.at(b, ext)),
-                    Face::Across | Face::Edge(_) => {
+                    Face::Across | Face::Edge(_) | Face::Plane(_) => {
                         return Err(format!("wall {} has no across line; measure to its centre line, faces or ends", r.id));
                     }
                 })
@@ -7713,7 +8171,7 @@ impl Model {
                     Face::Centre => middle,
                     Face::Start => middle - t.width / 2.0,
                     Face::End => middle + t.width / 2.0,
-                    Face::Left | Face::Right | Face::Across | Face::Edge(_) => {
+                    Face::Left | Face::Right | Face::Across | Face::Edge(_) | Face::Plane(_) => {
                         return Err(format!("{what} has a centre and two jambs, start and end; measure to one of those"));
                     }
                 };
@@ -7735,7 +8193,7 @@ impl Model {
                     Face::Centre => Ok((a, b)),
                     Face::Start => Ok((a - n, a + n)),
                     Face::End => Ok((b - n, b + n)),
-                    Face::Left | Face::Right | Face::Across | Face::Edge(_) => {
+                    Face::Left | Face::Right | Face::Across | Face::Edge(_) | Face::Plane(_) => {
                         Err(format!("detail line {} has a line and two ends; measure to one of those", r.id))
                     }
                 }
@@ -7749,6 +8207,10 @@ impl Model {
     /// line does, and a face where the wall's outline turns off it (a corner, mitred where walls join); a curved wall's
     /// faces are arcs, ending square to its ends; a detail line of any shape ends where it does.
     pub fn reference_point(&self, r: &Reference) -> Result<P2, String> {
+        if let Some(link) = r.link {
+            let (other, map) = self.link_map(link)?;
+            return other.reference_point(&r.own()).map(map).map_err(|e| format!("in the linked model: {e}"));
+        }
         let Some(end) = r.point else { return Err(format!("{} {} is measured to as a line", self.cat(r.id), self.shown(r.id))) };
         let pick = |(a, b): Line| if end == End::Start { a } else { b };
         match (self.elements.get(r.id), r.face) {
@@ -7802,7 +8264,7 @@ impl Model {
         };
         faces
             .iter()
-            .flat_map(|&face| [End::Start, End::End].map(|point| Reference { id, face, point: Some(point) }))
+            .flat_map(|&face| [End::Start, End::End].map(|point| Reference { id, face, point: Some(point), link: None }))
             .filter_map(|r| Some((r, self.reference_point(&r).ok()?)))
             .collect()
     }
@@ -7837,6 +8299,10 @@ impl Model {
                 .enumerate()
                 .map(|(i, l)| (Reference::line(id, Face::Edge(i as u32)), l))
                 .collect();
+        }
+        // A component's: its family's reference planes where it stands.
+        if let Some(Element::Component(c)) = self.elements.get(id) {
+            return self.component_reference_lines(c).into_iter().map(|(face, l)| (Reference::line(id, face), l)).collect();
         }
         let faces: &[Face] = match self.elements.get(id) {
             Some(Element::Wall(_)) => &[Face::Centre, Face::Left, Face::Right, Face::Start, Face::End],
@@ -7965,6 +8431,9 @@ impl Model {
     /// curved wall's, of its centre line or one of its faces.
     pub fn reference_arc(&self, r: &Reference) -> Result<(P2, f64), String> {
         let what = "a radial dimension measures round columns and curved walls";
+        if r.link.is_some() {
+            return Err(format!("{what} of the project's own, not of a linked model"));
+        }
         match self.elements.get(r.id) {
             Some(e) if e.column().is_some() => match (e.column(), self.column_type(e)) {
                 (Some(c), Some(t)) if t.round => Ok((c.at, t.width / 2.0)),
@@ -7999,6 +8468,9 @@ impl Model {
     /// or a detail line that is an arc.
     pub fn reference_sweep(&self, r: &Reference) -> Result<(P2, f64, f64, f64), String> {
         let what = "an arc length dimension measures along curved walls and arcs";
+        if r.link.is_some() {
+            return Err(format!("{what} of the project's own, not of a linked model"));
+        }
         match self.elements.get(r.id) {
             Some(Element::Wall(w)) => {
                 let axis = walls::Axis::of(w);
@@ -8008,7 +8480,7 @@ impl Model {
                     Face::Left => ext,
                     Face::Right => int,
                     Face::Centre => (ext + int) / 2.0,
-                    Face::Start | Face::End | Face::Across | Face::Edge(_) => {
+                    Face::Start | Face::End | Face::Across | Face::Edge(_) | Face::Plane(_) => {
                         return Err(format!("wall {}'s ends are straight; {what}", r.id));
                     }
                 };
@@ -8689,6 +9161,30 @@ impl Model {
         Ok(())
     }
 
+    /// A file that names a line pattern it doesn't hold: the reference draws solid again, and the warnings say what was
+    /// replaced, so such a file opens instead of failing (issue 566). A command still refuses, as ever: a file is read
+    /// kindly, a command strictly.
+    pub fn repair_line_patterns(&mut self) -> Vec<String> {
+        let mut warnings = Vec::new();
+        for (n, s) in &mut self.line_styles {
+            if let Some(p) = &s.pattern
+                && !self.line_patterns.contains_key(p)
+            {
+                warnings.push(format!("line style `{n}`: line pattern `{p}` was replaced with {}", lines::SOLID));
+                s.pattern = None;
+            }
+        }
+        for (n, t) in &mut self.grid_types {
+            if let Some(p) = &t.line_pattern
+                && !self.line_patterns.contains_key(p)
+            {
+                warnings.push(format!("grid type `{n}`: line pattern `{p}` was replaced with {}", lines::SOLID));
+                t.line_pattern = None;
+            }
+        }
+        warnings
+    }
+
     /// Everything that must hold between commands: references resolve, geometry is finite and
     /// not degenerate, doors and windows fit their walls and don't overlap.
     pub fn check(&self) -> Result<(), String> {
@@ -8774,6 +9270,9 @@ impl Model {
         }
         for (n, t) in &self.title_blocks {
             t.check(n)?;
+            if let Some((i, l)) = t.logos.iter().enumerate().find(|(_, l)| !self.images.contains_key(&l.image)) {
+                return Err(format!("title block `{n}`: logo {i} is of picture `{}`, which the project doesn't hold", l.image));
+            }
         }
         crate::titleblock::check_values("the project's title fields", &self.title_values)?;
         if self.spot_coordinate_types.len() > crate::spots::MAX_TYPES {
@@ -8792,7 +9291,7 @@ impl Model {
         }
         self.coordinates.check()?;
         for (n, x) in &self.materials {
-            for p in [&x.cut_pattern, &x.surface_pattern].into_iter().flatten() {
+            for p in x.fills() {
                 if !self.fill_patterns.contains_key(p) {
                     return Err(format!("material `{n}`: there's no fill pattern `{p}`"));
                 }
@@ -8855,6 +9354,9 @@ impl Model {
         for id in self.images.keys() {
             text(&format!("picture `{id}`"), "id", id)?;
         }
+        if let Some(id) = self.pdfs.keys().find(|id| !self.images.contains_key(*id)) {
+            return Err(format!("PDF `{id}` has no picture of its page among the project's pictures"));
+        }
         if self.clouds.len() > crate::cloud::MAX_CLOUDS {
             return Err(format!("the project has {} scans; it holds up to {}", self.clouds.len(), crate::cloud::MAX_CLOUDS));
         }
@@ -8885,6 +9387,11 @@ impl Model {
             }
             if let Some(t) = &x.texture {
                 t.check(&self.images).map_err(|e| format!("material `{n}`: texture: {e}"))?;
+            }
+            for (what, f) in [("cut", &x.cut_image), ("surface", &x.surface_image)] {
+                if let Some(f) = f {
+                    f.check_fill(&self.images).map_err(|e| format!("material `{n}`: {what} image fill: {e}"))?;
+                }
             }
         }
         for (n, f) in &self.families {
@@ -8986,12 +9493,19 @@ impl Model {
                 return Err(format!("{who}: a type's value {v} isn't what it holds"));
             }
         }
+        crate::materials::check(self)?;
         graphics::check_project(self)?;
         phasing::check_project(self)?;
         crate::curtain::check(self)?;
         for (cat, n, thickness, layers) in self.layered_types() {
             let who = format!("{cat} type `{n}`");
-            size(&format!("{who} thickness"), thickness)?;
+            // A curtain wall type is as thick as its panels and mullions make it: one of neither (Revit's of empty panels and no
+            // mullions, whose panels and mullions an import brings in on their own) is 0 mm thick.
+            if cat == "wall" && self.types.wall.get(n).is_some_and(|t| t.curtain.is_some()) {
+                coord(&format!("{who} thickness"), thickness)?;
+            } else {
+                size(&format!("{who} thickness"), thickness)?;
+            }
             if layers.len() > MAX_LAYERS {
                 return Err(format!("{who}: more than {MAX_LAYERS} layers"));
             }
@@ -9050,6 +9564,9 @@ impl Model {
                     }
                     p.check(&who, t.width, t.depth, t.round)?;
                 }
+                if let Some(section) = t.clear_section {
+                    section.check(&who, cat, t)?;
+                }
                 text(&who, "material", &t.material)?;
                 if !t.material.is_empty() && !self.materials.contains_key(&t.material) {
                     return Err(format!("{who}: material `{}` isn't in the library; add it with `material`", t.material));
@@ -9064,6 +9581,9 @@ impl Model {
             if !(t.spacing == 0.0 || (50.0..=MAX_COORD).contains(&t.spacing)) {
                 return Err(format!("railing type `{n}`: spacing {} mm; balusters stand 50 mm apart or more, or 0 for none", t.spacing));
             }
+        }
+        for (n, t) in &self.types.framing {
+            crate::framing::check_type(self, n, t)?;
         }
         for (n, t) in &self.types.room {
             let who = format!("room type `{n}`");
@@ -9168,6 +9688,7 @@ impl Model {
                     | Element::Mass(_)
                     | Element::PointCloud(_)
                     | Element::CadImport(_)
+                    | Element::Image(_)
                     // One a project: a second is seen only beside the first.
                     | Element::ProjectInfo(_)
             )
@@ -9305,7 +9826,7 @@ impl Model {
         let level_ok = |l: Guid| self.level(l).map(|_| ()).ok_or(format!("{who}: level {} doesn't exist", self.shown(l)));
         // A view annotation is drawn in: a plan, a section or an elevation, or with `sheets`, a sheet.
         let view_ok = |v: Guid, sheets: bool| match self.elements.get(v) {
-            Some(Element::Level(_) | Element::PlanView(_) | Element::Section(_) | Element::Elevation(_)) => Ok(()),
+            Some(Element::Level(_) | Element::PlanView(_) | Element::Section(_) | Element::Elevation(_) | Element::DetailView(_)) => Ok(()),
             Some(Element::Sheet(_)) if sheets => Ok(()),
             Some(other) => Err(format!(
                 "{who}: {} {} isn't a plan, a section, an elevation{}",
@@ -9379,6 +9900,12 @@ impl Model {
                 crate::panel_schedule::check(self, &who, ps)?;
                 if !view_names.insert(ps.name.as_str()) {
                     return Err(format!("{who}: another view is already named `{}`", ps.name));
+                }
+            }
+            Element::RebarDetail(rd) => {
+                crate::rebar_detail::check(self, &who, rd)?;
+                if !view_names.insert(rd.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", rd.name));
                 }
             }
             Element::Level(l) => {
@@ -9511,6 +10038,56 @@ impl Model {
                     None => size(&format!("{who} height"), w.height)?,
                 }
                 coord(&format!("{who} top offset"), w.top_offset)?;
+                if !(w.slant.is_finite() && w.slant.abs() <= walls::MAX_SLANT) {
+                    return Err(format!("{who}: slant {}° isn't between -{max}° and {max}° from upright", w.slant, max = walls::MAX_SLANT));
+                }
+                if let Some(outer) = w.profile.first() {
+                    let why = if w.arc != 0.0 {
+                        Some("a curved wall's")
+                    } else if w.slant != 0.0 {
+                        Some("a slanted wall's")
+                    } else if w.attach_top.is_some() || w.attach_base.is_some() {
+                        Some("an attached wall's")
+                    } else if w.panel_of.is_some() || crate::curtain::pattern(self, w).is_some() {
+                        Some("a curtain wall's, or a wall in one's,")
+                    } else {
+                        None
+                    };
+                    if let Some(why) = why {
+                        return Err(format!(
+                            "{who}: {why} shape can't be edited; reset its profile (`modify {{id, profile: []}}`) or make it straight, upright and unattached first"
+                        ));
+                    }
+                    if w.profile.len() > MAX_POINTS || w.profile.iter().map(Vec::len).sum::<usize>() > MAX_POINTS {
+                        return Err(format!("{who}: a profile has at most {MAX_POINTS} points"));
+                    }
+                    boundary(&format!("{who} profile"), outer)?;
+                    openings(&format!("{who} profile"), outer, &w.profile[1..])?;
+                    let length = w.start.dist(w.end);
+                    let low = outer.iter().map(|q| q.1).fold(f64::INFINITY, f64::min);
+                    let (s0, s1) = outer.iter().fold((f64::INFINITY, f64::NEG_INFINITY), |(a, b), q| (a.min(q.0), b.max(q.0)));
+                    if (s0.abs() > TOL) || ((s1 - length).abs() > TOL) {
+                        return Err(format!(
+                            "{who}: its profile runs from {s0:.0} to {s1:.0} mm along it, but must run between both its ends (0 and {length:.0} mm), as its joins and its length are its location line's"
+                        ));
+                    }
+                    // Its outline mustn't cross itself.
+                    let edges: Vec<(P2, P2)> = geom::ring_edges(outer).collect();
+                    let n = edges.len();
+                    for i in 0..n {
+                        for j in i + 2..n {
+                            if (i == 0 && j == n - 1) || geom::crossing(edges[i].0, edges[i].1, edges[j].0, edges[j].1).is_none() {
+                                continue;
+                            }
+                            return Err(format!("{who}: its profile crosses itself (edges {i} and {j})"));
+                        }
+                    }
+                    if low.abs() > TOL {
+                        return Err(format!(
+                            "{who}: its profile's lowest point is {low:.0} mm up from its base; it must start at its base (0), as its doors' sills are measured from there; move the wall's base offset instead"
+                        ));
+                    }
+                }
                 let (base, top) = (self.base_z(w), self.top_z(w));
                 if top <= base + TOL {
                     let (tall, short) = ((top - base).round() + 0.0, (base - top).round() + 0.0);
@@ -9518,6 +10095,7 @@ impl Model {
                         "{who}: its top ({top:.0} mm) must be above its base ({base:.0} mm); it comes out {tall} mm tall, so raise its top constraint, top offset or height by more than {short} mm"
                     ));
                 }
+                crate::framing::check(self, w).map_err(|e| format!("{who}: {e}"))?;
             }
             Element::Floor(f) => {
                 point(&format!("{who} pattern origin"), f.pattern_origin)?;
@@ -9541,6 +10119,7 @@ impl Model {
                     None => {}
                 }
                 shape_ok(&who, f, Variable::of(self.type_layers("floor", &f.type_name)))?;
+                crate::framing::floor::check(self, f).map_err(|e| format!("{who}: {e}"))?;
             }
             Element::Ceiling(c) => {
                 known(&who, &c.type_name, &self.types.ceiling)?;
@@ -9769,8 +10348,23 @@ impl Model {
                 }
                 let linear = d.kind == DimKind::Linear;
                 let along = self.measured_along(d);
+                // A linked model's element is measured, never held: no locks, no equality, no alignment, and in a plan.
+                if let Some(r) = d.refs.iter().find(|r| r.link.is_some()) {
+                    if vertical || d.equal || !d.locked.is_empty() || d.alignment {
+                        return Err(format!(
+                            "{who}: it measures to a linked model's element, which a dimension only measures: in a plan, with no locks or equality"
+                        ));
+                    }
+                    if let Some(l) = r.link
+                        && !matches!(self.elements.get(l), Some(Element::Link(_)))
+                    {
+                        return Err(format!("{who}: {l} isn't a link of this project"));
+                    }
+                }
                 let mut seen = BTreeSet::new();
                 let mut first: Option<(Reference, Line)> = None;
+                // A link that isn't loaded, or changed so the element is gone, leaves the dimension standing, undrawn.
+                let mut lost = false;
                 for r in &d.refs {
                     match d.kind {
                         DimKind::Radial => {
@@ -9791,8 +10385,15 @@ impl Model {
                     if r.point.is_some() && d.kind == DimKind::Angular {
                         return Err(format!("{who}: it measures to an end of {what}; an angle is between two lines"));
                     }
-                    let line = crate::drawing_plane::reference(self, d.view, r).map_err(|e| format!("{who}: {e}"))?;
-                    if !seen.insert((r.id, r.face, r.point)) {
+                    let line = match crate::drawing_plane::reference(self, d.view, r) {
+                        Ok(line) => line,
+                        Err(_) if r.link.is_some() => {
+                            lost = true;
+                            continue;
+                        }
+                        Err(e) => return Err(format!("{who}: {e}")),
+                    };
+                    if !seen.insert((r.id, r.face, r.point, r.link)) {
                         let at = match r.point {
                             Some(End::Start) => "start of its ",
                             Some(End::End) => "end of its ",
@@ -9827,7 +10428,7 @@ impl Model {
                         }
                     }
                 }
-                if matches!(d.kind, DimKind::Aligned | DimKind::Linear) && along.is_none() {
+                if matches!(d.kind, DimKind::Aligned | DimKind::Linear) && along.is_none() && !lost {
                     return Err(format!("{who}: its points are all in one place, so it has no way to run"));
                 }
             }
@@ -9890,6 +10491,28 @@ impl Model {
                 }
                 if let Some(first) = project_info.replace(id) {
                     return Err(format!("{who}: the project's information is element {first}; a project has one, set with `project_info`"));
+                }
+            }
+            Element::Image(im) => {
+                if !self.images.contains_key(&im.picture) {
+                    return Err(format!("{who}: the project holds no picture `{}`", im.picture));
+                }
+                level_ok(im.level)?;
+                point(&format!("{who} at"), im.at)?;
+                if !(im.width.is_finite() && im.width > 0.0 && im.width <= MAX_IMAGE_WIDTH) {
+                    return Err(format!("{who}: its width is above 0 and up to {MAX_IMAGE_WIDTH} mm, not {}", im.width));
+                }
+                if im.path.as_ref().is_some_and(|p| p.len() > MAX_TEXT) {
+                    return Err(format!("{who}: its path is longer than {MAX_TEXT} bytes"));
+                }
+                if let Some(v) = im.view
+                    && !(matches!(self.elements.get(v), Some(Element::Level(_) | Element::PlanView(_)))
+                        && self.plan_level(v).map(|l| self.guid(l)) == Some(im.level))
+                {
+                    return Err(format!(
+                        "{who}: view {} isn't a plan of its level; an image shows in one of its level's plans",
+                        self.shown(v)
+                    ));
                 }
             }
             Element::CadImport(ci) => {
@@ -9972,6 +10595,42 @@ impl Model {
                 }
                 if !view_names.insert(sc.name.as_str()) {
                     return Err(format!("{who}: another view is already named `{}`", sc.name));
+                }
+            }
+            Element::DetailView(v) => {
+                text(&who, "name", &v.name)?;
+                if v.name.trim().is_empty() {
+                    return Err(format!("{who}: a view needs a name"));
+                }
+                if !matches!(
+                    self.elements.get(v.parent),
+                    Some(Element::Level(_) | Element::PlanView(_) | Element::Section(_) | Element::Elevation(_))
+                ) {
+                    return Err(format!(
+                        "{who}: parent {} isn't a plan, a section or an elevation; a detail is a fragment of one",
+                        self.shown(v.parent)
+                    ));
+                }
+                if self.same(v.parent, id) {
+                    return Err(format!("{who}: it can't be a detail of itself"));
+                }
+                let [a, b] = v.region;
+                coord(&format!("{who} region"), a.0)?;
+                coord(&format!("{who} region"), a.1)?;
+                coord(&format!("{who} region"), b.0)?;
+                coord(&format!("{who} region"), b.1)?;
+                if !(a.0 < b.0 - TOL && a.1 < b.1 - TOL) {
+                    return Err(format!("{who}: its region runs from a south-west or bottom-left corner to a north-east or top-right one"));
+                }
+                if !(v.scale.is_finite() && (1.0..=50.0).contains(&v.scale)) {
+                    return Err(format!("{who}: its scale is 1 : 1 to 1 : 50, not 1 : {}", v.scale));
+                }
+                if let Some(mark) = v.mark {
+                    point(&format!("{who} mark"), mark)?;
+                }
+                v.graphics.check(self).map_err(|e| format!("{who}: {e}"))?;
+                if !view_names.insert(v.name.as_str()) {
+                    return Err(format!("{who}: another view is already named `{}`", v.name));
                 }
             }
             Element::PlanView(v) => {
@@ -10483,6 +11142,7 @@ impl Model {
                     shape_ok(&who, &self.roof_as_floor(r), Variable::of(self.type_layers("roof", &r.type_name)))?;
                 }
                 self.roof_pieces(r).map_err(|e| format!("{who}: {e}"))?;
+                crate::framing::roof::check(self, r).map_err(|e| format!("{who}: {e}"))?;
             }
             Element::Sheet(sh) => {
                 text(&who, "number", &sh.number)?;
@@ -10650,6 +11310,7 @@ impl Model {
             types,
             materials,
             images,
+            pdfs,
             clouds,
             cads,
             families,
@@ -10709,6 +11370,7 @@ impl Model {
             && *types == o.types
             && *materials == o.materials
             && *images == o.images
+            && *pdfs == o.pdfs
             && *clouds == o.clouds
             && *cads == o.cads
             && *families == o.families
@@ -11353,6 +12015,9 @@ mod tests {
             join: true,
             curtain: None,
             panel_of: None,
+            slant: 0.0,
+            profile: Vec::new(),
+            framing: None,
         })
     }
 
@@ -11377,6 +12042,7 @@ mod tests {
             mark: String::new(),
             flip_facing: false,
             flip_hand: false,
+            slanted: false,
         })
     }
 

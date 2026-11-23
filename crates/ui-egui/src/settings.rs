@@ -13,7 +13,7 @@ use crate::popup::Modal;
 
 use bimcraft_i18n::msg;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use egui::{Align, Color32, ComboBox, Context, Id as UiId, Layout, RichText, ScrollArea, ThemePreference, Ui, vec2};
@@ -23,19 +23,20 @@ use bimcraft_assistant::{Provider, Usage, model_ok, seal};
 
 use crate::BimApp;
 use crate::assistant::Secret;
-use crate::dock::{Docking, Palette};
+use crate::dock::{Docking, Palette, Policy};
 use crate::lang::{Lang, t, tf};
-use crate::presets::{Preset, Scale, hidden_from_json, presets_from_json};
+use crate::presets::{Preset, Scale, hidden_from_json, panels_from_json, presets_from_json};
 use crate::style::{GuideStyle, Profile, Scheme, pal};
 use crate::updates::failed;
-use std::collections::BTreeSet;
 
 /// The settings file's name, in the folder of the favorites.
 pub const FILE: &str = "settings.json";
-/// The most of it that's read: it's a few hundred bytes.
-const MAX_FILE: u64 = 64 * 1024;
+/// The most of it that's read: a full set of 4096 bindings still fits.
+const MAX_FILE: u64 = 1 << 20;
 /// The most shortcuts of the user's own that are read back: the file is the user's, but also a hand's or a damage's.
-pub const MAX_SHORTCUTS: usize = 256;
+pub const MAX_SHORTCUTS: usize = 4096;
+/// The most actions a settings file may name.
+pub const MAX_ACTIONS: usize = 512;
 
 /// The settings file beside the favorites file at `favorites`.
 pub fn beside(favorites: &Path) -> PathBuf {
@@ -103,9 +104,11 @@ pub struct Settings {
     pub panel_colour: Option<[u8; 3]>,
     pub canvas_colour: Option<[u8; 3]>,
     pub text_colour: Option<[u8; 3]>,
-    /// The project's scale, the tools taken out of the ribbon and the Tools palette, and the presets (`presets.rs`).
+    /// The project's scale, the tools and panels taken out of the ribbon and the Tools palette, and the presets (`presets.rs`).
     pub scale: Scale,
     pub tools_hidden: BTreeSet<String>,
+    /// The ribbon panels taken out of the window (`tab:<tab>/<panel>`); palettes are the layout's own list.
+    pub panels_hidden: BTreeSet<String>,
     pub presets: Vec<Preset>,
     pub language: Lang,
     pub ribbon_minimized: bool,
@@ -120,6 +123,10 @@ pub struct Settings {
     pub high_contrast: [u8; 3],
     /// Grid snapping applies to every view, using the active view's enabled lattice.
     pub grid_snapping: bool,
+    /// Select Elements by Face, in a family document's plans and elevations: a face selects what it is of.
+    pub select_by_face: bool,
+    /// Drag Elements on Selection, beside it: a drag from the face of what isn't selected is that element's, and selects it.
+    pub drag_on_selection: bool,
     /// How guides and the live drawing's aids are drawn: the refined look, or the classic one to compare it with.
     pub guide_style: GuideStyle,
     /// Save and Save As write the project zipped (`bimcraft_core::bimc`): a much smaller file, slower to save and open.
@@ -128,8 +135,8 @@ pub struct Settings {
     /// back as it was written), and the view's name in their corner, a working aid on the screen.
     pub origin_marker: bool,
     pub view_name: bool,
-    /// The shortcuts the user made (Keyboard Shortcuts): two-character key to the English name of an action.
-    pub shortcuts: BTreeMap<String, String>,
+    /// The shortcuts: chords and sequences, many per action, saved as a full effective set.
+    pub shortcuts: crate::shortcuts::Config,
     /// The system's title bar rather than the window's own, where the window can draw its own.
     pub system_title_bar: bool,
     /// Agents: the window opens the control port (on `agents_port`, 0 for any free one), and they may edit or only read.
@@ -175,10 +182,11 @@ impl Settings {
             "text_colour": self.text_colour,
             "scale": self.scale.code(),
             "tools_hidden": self.tools_hidden,
+            "panels_hidden": self.panels_hidden,
             "presets": self.presets.iter().map(Preset::to_json).collect::<Vec<_>>(),
             "language": self.language.code(),
             "ribbon_minimized": self.ribbon_minimized,
-            "palettes": self.docking.to_json(),
+            "palettes": self.docking.to_json(&Palette::known()),
             "autosave_minutes": self.autosave_minutes,
             "gpu_3d": self.gpu_3d,
             "cut_fills_3d": self.cut_fills_3d,
@@ -187,9 +195,11 @@ impl Settings {
             "grid_snapping": self.grid_snapping,
             "guide_style": self.guide_style.code(),
             "compressed_save": self.compressed_save,
+            "select_by_face": self.select_by_face,
+            "drag_on_selection": self.drag_on_selection,
             "origin_marker": self.origin_marker,
             "view_name": self.view_name,
-            "shortcuts": self.shortcuts,
+            "shortcuts": self.shortcuts.to_json(),
             "system_title_bar": self.system_title_bar,
             "agents": {"listen": self.agents_listen, "port": self.agents_port, "edit": self.agents_edit},
             // The key, only when the user asked for it to be kept, and then only sealed.
@@ -225,10 +235,15 @@ impl Settings {
             text_colour: own("text_colour", base.text_colour),
             scale: v["scale"].as_str().and_then(Scale::from_code).unwrap_or(base.scale),
             tools_hidden: if v["tools_hidden"].is_array() { hidden_from_json(&v["tools_hidden"]) } else { base.tools_hidden },
+            panels_hidden: if v["panels_hidden"].is_array() { panels_from_json(&v["panels_hidden"]) } else { base.panels_hidden },
             presets: if v["presets"].is_array() { presets_from_json(&v["presets"]) } else { base.presets },
             language: v["language"].as_str().and_then(Lang::from_code).unwrap_or(base.language),
             ribbon_minimized: v["ribbon_minimized"].as_bool().unwrap_or(base.ribbon_minimized),
-            docking: if v["palettes"].is_object() { Docking::from_json(&v["palettes"]) } else { base.docking },
+            docking: if v["palettes"].is_object() {
+                Docking::from_json(&v["palettes"], Policy::Live, &Palette::known())
+            } else {
+                base.docking
+            },
             autosave_minutes: v["autosave_minutes"].as_u64().filter(|n| *n <= 120).map_or(base.autosave_minutes, |n| n as u32),
             gpu_3d: v["gpu_3d"].as_bool().unwrap_or(base.gpu_3d),
             cut_fills_3d: v["cut_fills_3d"].as_bool().unwrap_or(base.cut_fills_3d),
@@ -237,6 +252,8 @@ impl Settings {
             grid_snapping: v["grid_snapping"].as_bool().unwrap_or(base.grid_snapping),
             guide_style: v["guide_style"].as_str().and_then(GuideStyle::from_code).unwrap_or(base.guide_style),
             compressed_save: v["compressed_save"].as_bool().unwrap_or(base.compressed_save),
+            select_by_face: v["select_by_face"].as_bool().unwrap_or(base.select_by_face),
+            drag_on_selection: v["drag_on_selection"].as_bool().unwrap_or(base.drag_on_selection),
             origin_marker: v["origin_marker"].as_bool().unwrap_or(base.origin_marker),
             view_name: v["view_name"].as_bool().unwrap_or(base.view_name),
             shortcuts: shortcuts_from(&v["shortcuts"], base.shortcuts),
@@ -268,19 +285,10 @@ fn usage_from(v: &Value, base: BTreeMap<String, Usage>) -> BTreeMap<String, Usag
         .collect()
 }
 
-/// The shortcuts a settings file holds: an object of key to action, of which only the entries that Keyboard Shortcuts could have made
-/// are kept (a key of two letters or digits, in upper case whatever its case in the file, and an action's English name), and no more
-/// than [`MAX_SHORTCUTS`]. A value that isn't an object leaves `base`'s; an empty object is none (Restore Defaults).
-fn shortcuts_from(v: &Value, base: BTreeMap<String, String>) -> BTreeMap<String, String> {
-    let Some(entries) = v.as_object() else { return base };
-    entries
-        .iter()
-        .filter_map(|(key, action)| {
-            let (key, action) = (key.to_ascii_uppercase(), action.as_str()?);
-            (crate::shortcuts::is_key(&key) && crate::shortcuts::ACTIONS.contains(&action)).then(|| (key, action.to_string()))
-        })
-        .take(MAX_SHORTCUTS)
-        .collect()
+/// The shortcuts a settings file holds: version 2 keeps its full set; an old object of key to
+/// action is migrated over the base profile.
+fn shortcuts_from(v: &Value, base: crate::shortcuts::Config) -> crate::shortcuts::Config {
+    if v.is_object() { crate::shortcuts::Config::from_json(v, &base) } else { base }
 }
 
 /// `[r, g, b]`, each 0 to 255: a colour; anything else, none.
@@ -369,16 +377,23 @@ impl BimApp {
     /// Keeps the settings in `path`: what it holds now, and from now on what changes.
     pub fn use_settings(&mut self, path: PathBuf) {
         let now = self.settings_now(ThemePreference::System);
-        let kept = read(&path).map_or(now.clone(), |v| Settings::from_json(&v, now));
+        let raw = read(&path);
+        // An old key-to-action object is migrated to version 2, and the file is written back.
+        let migrating = raw
+            .as_ref()
+            .and_then(|v| v.get("shortcuts"))
+            .and_then(Value::as_object)
+            .is_some_and(|o| o.get("version").and_then(Value::as_u64) != Some(2));
+        let kept = match raw {
+            Some(v) => Settings::from_json(&v, now),
+            None => now,
+        };
         (self.lang, self.ribbon_min, self.docking) = (kept.language, kept.ribbon_minimized, kept.docking.clone());
         (self.compact, self.profile, self.scale) = (kept.compact, kept.profile, kept.scale);
         (self.scheme, self.accent) = (kept.scheme, kept.accent);
         (self.panel_colour, self.canvas_colour, self.text_colour) = (kept.panel_colour, kept.canvas_colour, kept.text_colour);
         (self.tools_hidden, self.presets) = (kept.tools_hidden.clone(), kept.presets.clone());
-        // BIMCraft has no ribbon: it starts with its tools out, whatever a session in Rev left.
-        if self.profile == Profile::BimCraft {
-            self.docking.show(Palette::Tools, true);
-        }
+        self.panels_hidden = kept.panels_hidden.clone();
         self.theme_wanted = Some(kept.theme);
         self.light_canvas = kept.light_canvas;
         self.autosave.interval_minutes = kept.autosave_minutes;
@@ -389,8 +404,12 @@ impl BimApp {
         self.grid_snapping = kept.grid_snapping;
         self.guide_style = kept.guide_style;
         self.compressed_save = kept.compressed_save;
+        (self.select_by_face, self.drag_on_selection) = (kept.select_by_face, kept.drag_on_selection);
         (self.show_origin, self.show_view_name) = (kept.origin_marker, kept.view_name);
-        self.custom_shortcuts = kept.shortcuts.clone();
+        self.shortcuts = crate::shortcuts::Shortcuts::from_config(&kept.shortcuts);
+        self.shortcut_presets = kept.shortcuts.presets.clone();
+        self.active_shortcut_preset = kept.shortcuts.active_preset.clone();
+        crate::shortcuts::publish(&self.shortcuts);
         self.system_title_bar = kept.system_title_bar;
         (self.agents.listen, self.agents.port, self.agents.edit) = (kept.agents_listen, kept.agents_port, kept.agents_edit);
         self.cowork_prefs = kept.cowork.clone();
@@ -408,13 +427,22 @@ impl BimApp {
             },
             None => a.remember = false,
         }
-        self.settings_kept = Some(kept);
+        self.settings_kept = if migrating { None } else { Some(kept) };
         self.settings_path = Some(path);
     }
 
     /// Lets the 3D view be drawn on the card `state` is the window's, when the user asks (Settings > Performance).
     pub fn use_graphics_card(&mut self, state: &eframe::egui_wgpu::RenderState) {
         self.card.state = Some(state.clone());
+    }
+
+    /// The bindings and the presets as the settings file keeps them: the current set, the user's
+    /// snapshots, and the preset the set came from.
+    fn shortcuts_config(&self) -> crate::shortcuts::Config {
+        let mut config = self.shortcuts.to_config();
+        config.presets = self.shortcut_presets.clone();
+        config.active_preset = self.active_shortcut_preset.clone();
+        config
     }
 
     fn settings_now(&self, theme: ThemePreference) -> Settings {
@@ -430,6 +458,7 @@ impl BimApp {
             text_colour: self.text_colour,
             scale: self.scale,
             tools_hidden: self.tools_hidden.clone(),
+            panels_hidden: self.panels_hidden.clone(),
             presets: self.presets.clone(),
             language: self.lang,
             ribbon_minimized: self.ribbon_min,
@@ -442,9 +471,11 @@ impl BimApp {
             grid_snapping: self.grid_snapping,
             guide_style: self.guide_style,
             compressed_save: self.compressed_save,
+            select_by_face: self.select_by_face,
+            drag_on_selection: self.drag_on_selection,
             origin_marker: self.show_origin,
             view_name: self.show_view_name,
-            shortcuts: self.custom_shortcuts.clone(),
+            shortcuts: self.shortcuts_config(),
             system_title_bar: self.system_title_bar,
             agents_listen: self.agents.listen,
             agents_port: self.agents.port,
@@ -548,26 +579,31 @@ impl BimApp {
     /// A box for each palette, shown or closed, and the layout the profile starts in: Settings > User Interface's, and the
     /// app bar's Palettes menu, which is the way back for the Tools palette, as it has no shortcut.
     pub(crate) fn palette_switches(&mut self, ui: &mut Ui) {
-        for p in Palette::ALL {
+        for p in Palette::known() {
             let mut on = self.docking.shown(p);
             if ui.checkbox(&mut on, t(p.name())).changed() {
                 self.show_palette(p, on);
             }
         }
         let (tip, layout) = match self.profile {
-            Profile::BimCraft => {
-                (msg!("The tools on the left, the Inspector over the Navigator on the right, as at first"), Docking::default())
+            Profile::BimCraft => (
+                msg!("The tools on the left, the Inspector over the Navigator on the right, every panel and tool shown again, as at first"),
+                Docking::default(),
+            ),
+            Profile::Rev => {
+                (msg!("Properties over the Project Browser on the left, every panel and tool shown again, as at first"), Docking::revit())
             }
-            Profile::Rev => (msg!("Properties over the Project Browser, on the left, as at first"), Docking::revit()),
         };
         if ui.button(t("Reset Palette Layout")).on_hover_text(t(tip)).clicked() {
             self.docking = layout;
+            // The standard layout shows every panel and every tool again: what Edit Tools took out is put back.
+            self.panels_hidden.clear();
+            self.tools_hidden.clear();
         }
     }
 
     fn interface_page(&mut self, ui: &mut Ui, ctx: &Context) {
         heading(ui, msg!("Profile"));
-        let before = self.profile;
         ui.horizontal(|ui| {
             for (profile, tip) in [
                 (Profile::BimCraft, msg!("BIMCraft's own: the tools in a palette, the Inspector and the Navigator on the right")),
@@ -576,10 +612,6 @@ impl BimApp {
                 ui.radio_value(&mut self.profile, profile, profile.name()).on_hover_text(t(tip));
             }
         });
-        // Back in BIMCraft, its tools come back where they were: Rev, which has the ribbon, put them away.
-        if before != self.profile && self.profile == Profile::BimCraft {
-            self.docking.show(Palette::Tools, true);
-        }
         heading(ui, msg!("Presets"));
         self.presets_section(ui);
         heading(ui, msg!("Theme"));
